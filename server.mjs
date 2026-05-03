@@ -8,6 +8,7 @@ import { createClient } from "@supabase/supabase-js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 5288);
 const STATE_ID = "production";
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const localDataDir = path.join(__dirname, "data");
 const localDataPath = path.join(localDataDir, "apg-state.json");
 
@@ -60,6 +61,15 @@ const supabase =
     : null;
 
 const sessions = new Map();
+
+function pruneExpiredSessions() {
+  const now = Date.now();
+  for (const [token, session] of sessions.entries()) {
+    if (now - session.createdAt > SESSION_TTL_MS) {
+      sessions.delete(token);
+    }
+  }
+}
 
 function mergeState(state = {}) {
   return {
@@ -133,7 +143,18 @@ function stateForAccount(state, account) {
 function sessionFromRequest(req) {
   const header = req.get("authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  return sessions.get(token);
+  const session = sessions.get(token);
+
+  if (!session) {
+    return null;
+  }
+
+  if (Date.now() - session.createdAt > SESSION_TTL_MS) {
+    sessions.delete(token);
+    return null;
+  }
+
+  return session;
 }
 
 function mergeClientState(serverState, clientState, account) {
@@ -165,11 +186,13 @@ app.post("/api/login", async (req, res) => {
     return res.status(401).json({ error: "Invalid username or password" });
   }
 
+  pruneExpiredSessions();
   const token = crypto.randomBytes(32).toString("hex");
   sessions.set(token, { accountId: account.id, role: account.role, createdAt: Date.now() });
 
   return res.json({
     token,
+    expiresInMs: SESSION_TTL_MS,
     account: publicAccount(account, account.role === "admin"),
     state: stateForAccount(state, account)
   });
