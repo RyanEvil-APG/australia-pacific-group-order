@@ -1,0 +1,22 @@
+{
+  "name": "australia-pacific-group-order",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5288",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4288",
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.89.0",
+    "@vitejs/plugin-react": "^5.1.1",
+    "express": "^5.2.1",
+    "vite": "^7.2.7",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "lucide-react": "^0.561.0"
+  },
+  "devDependencies": {}
+}

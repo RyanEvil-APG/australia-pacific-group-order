@@ -1,0 +1,2013 @@
+import React from "react";
+import {
+  ArrowUpRight,
+  Bell,
+  Boxes,
+  CalendarDays,
+  CheckCircle2,
+  ClipboardList,
+  Clock3,
+  CreditCard,
+  Filter,
+  Gem,
+  LineChart,
+  LockKeyhole,
+  LogOut,
+  MapPin,
+  PackageCheck,
+  Plane,
+  Plus,
+  Search,
+  Settings,
+  ShieldCheck,
+  ShipWheel,
+  Sparkles,
+  TrendingUp,
+  Truck,
+  UserRound,
+  WalletCards
+} from "lucide-react";
+
+const exchangeRate = 17150;
+
+const initialAccounts = [
+  {
+    id: "ryan",
+    username: "ryan",
+    password: "ryan123",
+    displayName: "Ryan",
+    role: "admin",
+    label: "Admin",
+    color: "#d1a54d",
+    initials: "RV",
+    active: true
+  },
+  {
+    id: "general-manager",
+    username: "manager",
+    password: "manager123",
+    displayName: "General Manager",
+    role: "general_manager",
+    label: "General Manager",
+    color: "#274d7a",
+    initials: "GM",
+    active: true
+  },
+  {
+    id: "staff-vn",
+    username: "staff.vn",
+    password: "staff123",
+    displayName: "VN Ops",
+    role: "staff",
+    label: "Staff",
+    color: "#11664f",
+    initials: "VN",
+    active: true
+  }
+];
+
+const statusFlow = [
+  { id: "quote", label: "Báo giá", icon: ClipboardList },
+  { id: "deposit", label: "Đặt cọc", icon: WalletCards },
+  { id: "purchased", label: "Đã mua", icon: PackageCheck },
+  { id: "inTransit", label: "Bay về VN", icon: Plane },
+  { id: "delivering", label: "Giao khách", icon: Truck },
+  { id: "done", label: "Hoàn tất", icon: CheckCircle2 }
+];
+
+const initialBatches = [
+  {
+    id: "batch-260508",
+    code: "DOT-08MAY-ADL",
+    name: "Đợt 08/05 - Adelaide gom",
+    route: "Adelaide/Melbourne -> TP.HCM",
+    cutoff: "06/05 18:00",
+    departure: "08/05",
+    eta: "10/05",
+    capacityKg: 45,
+    status: "closed",
+    note: "Đã chốt lô, chỉ xử lý cân nặng và tracking."
+  },
+  {
+    id: "batch-260512",
+    code: "DOT-12MAY-SYD",
+    name: "Đợt 12/05 - Sydney express",
+    route: "Sydney/Brisbane -> TP.HCM",
+    cutoff: "10/05 20:00",
+    departure: "12/05",
+    eta: "14/05",
+    capacityKg: 60,
+    status: "open",
+    note: "Ưu tiên hàng nhẹ, giá trị cao, khách đã cọc."
+  },
+  {
+    id: "batch-260515",
+    code: "DOT-15MAY-MIX",
+    name: "Đợt 15/05 - Mixed cargo",
+    route: "Perth/Adelaide -> Hà Nội",
+    cutoff: "13/05 17:00",
+    departure: "15/05",
+    eta: "18/05",
+    capacityKg: 70,
+    status: "open",
+    note: "Lô kế tiếp cho hàng chưa mua hoặc chờ gom."
+  }
+];
+
+const initialOrders = [
+  {
+    id: "AU-260503-014",
+    orderKind: "customer",
+    customer: "Minh Anh",
+    phone: "0908 221 884",
+    product: "Aesop Resurrection Aromatique Hand Wash x 6",
+    source: "Aesop Australia",
+    city: "Melbourne",
+    status: "inTransit",
+    priority: "VIP",
+    aud: 252,
+    exchangeRate: 17120,
+    serviceFee: 12,
+    shippingAud: 31,
+    intlShippingAud: 98,
+    depositVnd: 4200000,
+    outstandingVnd: 2840000,
+    eta: "08/05",
+    margin: 18.6,
+    batchId: "batch-260508",
+    assigneeId: "staff-vn",
+    purchaserId: "ryan",
+    weightKg: 4.8,
+    tracking: "AUX-MEL-8841",
+    note: "Khách cần bill rõ, đóng thùng chống móp."
+  },
+  {
+    id: "AU-260503-013",
+    orderKind: "customer",
+    customer: "Gia Hân",
+    phone: "0937 112 019",
+    product: "Chemist Warehouse vitamins bundle",
+    source: "Chemist Warehouse",
+    city: "Sydney",
+    status: "purchased",
+    priority: "Standard",
+    aud: 186,
+    exchangeRate: 17150,
+    serviceFee: 10,
+    shippingAud: 22,
+    intlShippingAud: 65,
+    depositVnd: 3100000,
+    outstandingVnd: 1600000,
+    eta: "10/05",
+    margin: 14.2,
+    batchId: "batch-260512",
+    assigneeId: "staff-vn",
+    purchaserId: "staff-vn",
+    weightKg: 3.2,
+    tracking: "SYD-CW-9012",
+    note: "Chờ gom đủ 5kg để tối ưu cước."
+  },
+  {
+    id: "AU-260502-011",
+    orderKind: "customer",
+    customer: "Hoàng Nam",
+    phone: "0912 441 552",
+    product: "Dyson Airwrap Complete Long",
+    source: "Dyson AU",
+    city: "Adelaide",
+    status: "purchased",
+    priority: "High",
+    aud: 899,
+    exchangeRate: 17220,
+    serviceFee: 8,
+    shippingAud: 45,
+    intlShippingAud: 92,
+    depositVnd: 10500000,
+    outstandingVnd: 7050000,
+    eta: "12/05",
+    margin: 11.4,
+    batchId: "batch-260512",
+    assigneeId: "ryan",
+    purchaserId: "ryan",
+    weightKg: 2.7,
+    tracking: "ADL-DY-5520",
+    note: "Đã mua sale, hàng giá trị cao cần kiểm kỹ bill và serial."
+  },
+  {
+    id: "AU-260502-009",
+    orderKind: "customer",
+    customer: "Linh Tran",
+    phone: "0981 702 335",
+    product: "Country Road leather tote",
+    source: "David Jones",
+    city: "Perth",
+    status: "deposit",
+    priority: "VIP",
+    aud: 329,
+    exchangeRate: 17100,
+    serviceFee: 15,
+    shippingAud: 28,
+    intlShippingAud: 52,
+    depositVnd: 2500000,
+    outstandingVnd: 4400000,
+    eta: "Chờ mua",
+    margin: 20.1,
+    batchId: "batch-260515",
+    assigneeId: "staff-vn",
+    purchaserId: "staff-vn",
+    weightKg: 1.4,
+    tracking: "PTH-DJ-2235",
+    note: "Xác nhận màu Black/Gold trước khi thanh toán."
+  },
+  {
+    id: "AU-260501-006",
+    orderKind: "customer",
+    customer: "Bảo Ngọc",
+    phone: "0903 881 921",
+    product: "Apple Watch Series 10 GPS",
+    source: "Apple Australia",
+    city: "Brisbane",
+    status: "delivering",
+    priority: "High",
+    aud: 649,
+    exchangeRate: 17180,
+    serviceFee: 9,
+    shippingAud: 35,
+    intlShippingAud: 61,
+    depositVnd: 13850000,
+    outstandingVnd: 0,
+    eta: "Hôm nay",
+    margin: 12.8,
+    batchId: "batch-260508",
+    assigneeId: "staff-vn",
+    purchaserId: "ryan",
+    weightKg: 1.1,
+    tracking: "BNE-APL-1921",
+    note: "Giao Q7 sau 18:00, thu phần còn lại tiền mặt."
+  },
+  {
+    id: "AU-260430-003",
+    orderKind: "ready_stock",
+    customer: "Quốc Bảo",
+    phone: "0974 118 777",
+    product: "RM Williams Comfort Craftsman",
+    source: "R.M.Williams",
+    city: "Adelaide",
+    status: "done",
+    priority: "VIP",
+    aud: 649,
+    exchangeRate: 17080,
+    serviceFee: 14,
+    shippingAud: 39,
+    intlShippingAud: 81,
+    depositVnd: 14750000,
+    outstandingVnd: 0,
+    eta: "Đã giao",
+    margin: 17.5,
+    batchId: "batch-260508",
+    assigneeId: "ryan",
+    purchaserId: "ryan",
+    weightKg: 2.3,
+    tracking: "ADL-RMW-8777",
+    note: "Khách hài lòng, nên chăm lại sau 30 ngày."
+  }
+];
+
+const initialInventory = [
+  {
+    sku: "VN-AESOP-HW-500",
+    name: "Aesop Hand Wash 500ml",
+    onHand: 8,
+    reserved: 2,
+    location: "Q7 Ready Stock",
+    sellVnd: 890000,
+    ownerId: "staff-vn",
+    status: "Sẵn bán"
+  },
+  {
+    sku: "VN-CW-VIT-D3",
+    name: "Vitamin D3 Chemist Warehouse",
+    onHand: 14,
+    reserved: 3,
+    location: "Hà Nội Ready Stock",
+    sellVnd: 320000,
+    ownerId: "staff-vn",
+    status: "Sẵn bán"
+  },
+  {
+    sku: "VN-RMW-BOOT-42",
+    name: "R.M.Williams Boots size 42",
+    onHand: 1,
+    reserved: 1,
+    location: "Q7 Ready Stock",
+    sellVnd: 7800000,
+    ownerId: "ryan",
+    status: "Giữ khách VIP"
+  },
+  {
+    sku: "VN-APPLE-WATCH10",
+    name: "Apple Watch Series 10",
+    onHand: 2,
+    reserved: 0,
+    location: "Đà Nẵng Ready Stock",
+    sellVnd: 12900000,
+    ownerId: "general-manager",
+    status: "Sẵn bán"
+  }
+];
+
+const tasks = [
+  { title: "Chốt báo giá Dyson", time: "17:45", tone: "urgent" },
+  { title: "Kiểm tra thu/chi lô Melbourne", time: "18:20", tone: "gold" },
+  { title: "Nhắn khách VIP xác nhận màu túi", time: "19:00", tone: "green" }
+];
+
+const formatter = new Intl.NumberFormat("vi-VN");
+
+function aud(value) {
+  return `A$${formatter.format(value)}`;
+}
+
+function vnd(value) {
+  return `${formatter.format(Math.round(value))}đ`;
+}
+
+function money(value) {
+  return Number(value || 0);
+}
+
+function orderRate(order) {
+  return money(order.exchangeRate) || exchangeRate;
+}
+
+function totalAud(order) {
+  return money(order.aud) + money(order.shippingAud) + money(order.intlShippingAud);
+}
+
+function finance(order) {
+  const rate = orderRate(order);
+  const goodsAndShippingVnd = totalAud(order) * rate;
+  const serviceFeeVnd = money(order.aud) * rate * (money(order.serviceFee) / 100);
+  const estimatedTotalVnd = goodsAndShippingVnd + serviceFeeVnd;
+  const manualOutstandingVnd = money(order.outstandingVnd);
+  const cashInVnd = money(order.depositVnd);
+  const customerTotalVnd = manualOutstandingVnd > 0 ? cashInVnd + manualOutstandingVnd : estimatedTotalVnd;
+  const cashOutVnd = goodsAndShippingVnd;
+
+  return {
+    rate,
+    goodsAndShippingVnd,
+    serviceFeeVnd,
+    estimatedTotalVnd,
+    customerTotalVnd,
+    cashInVnd,
+    cashOutVnd,
+    outstandingVnd: manualOutstandingVnd > 0 ? manualOutstandingVnd : Math.max(estimatedTotalVnd - cashInVnd, 0),
+    grossProfitVnd: customerTotalVnd - cashOutVnd
+  };
+}
+
+function totalVnd(order) {
+  return finance(order).customerTotalVnd;
+}
+
+function updateOrderField(orders, orderId, field, value) {
+  return orders.map((order) =>
+    order.id === orderId
+      ? {
+          ...order,
+          [field]: value
+        }
+      : order
+  );
+}
+
+function normalizeInitials(value) {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.slice(0, 1).toUpperCase())
+    .join("");
+}
+
+function statusLabel(id) {
+  return statusFlow.find((status) => status.id === id)?.label ?? id;
+}
+
+function batchStatusLabel(status) {
+  const labels = {
+    open: "Đang mở",
+    closed: "Đã chốt",
+    inTransit: "Đang bay",
+    arrived: "Đã về điểm nhận"
+  };
+
+  return labels[status] ?? status;
+}
+
+function roleLabel(role) {
+  const labels = {
+    admin: "Admin",
+    general_manager: "General Manager",
+    staff: "Staff"
+  };
+
+  return labels[role] ?? role;
+}
+
+function nearestOpenBatchId(batches) {
+  return batches.find((batch) => batch.status === "open")?.id ?? batches[0]?.id;
+}
+
+function shipmentTimeline(batch) {
+  if (!batch) {
+    return [];
+  }
+
+  return [
+    { label: "Lên đơn", value: "Hôm nay", tone: "done" },
+    { label: "Đi mua", value: `Trước ${batch.cutoff}`, tone: batch.status === "open" ? "live" : "done" },
+    { label: "Chốt chuyến", value: batch.cutoff, tone: batch.status === "open" ? "next" : "done" },
+    { label: "Bay", value: batch.departure, tone: ["inTransit", "arrived"].includes(batch.status) ? "done" : "next" },
+    { label: "Về VN", value: batch.eta, tone: batch.status === "arrived" ? "done" : "next" },
+    { label: "Bán/giao", value: "Sau khi về kho", tone: "next" }
+  ];
+}
+
+const storageKeys = {
+  accounts: "apg-order.accounts",
+  orders: "apg-order.orders",
+  batches: "apg-order.batches",
+  inventory: "apg-order.inventory",
+  currentAccountId: "apg-order.currentAccountId",
+  sessionToken: "apg-order.sessionToken"
+};
+
+function mergeById(defaultItems, storedItems) {
+  if (!Array.isArray(storedItems)) {
+    return defaultItems;
+  }
+
+  const storedById = new Map(storedItems.map((item) => [item.id ?? item.sku, item]));
+  const defaultIds = new Set(defaultItems.map((item) => item.id ?? item.sku));
+  const mergedDefaults = defaultItems.map((item) => ({
+    ...item,
+    ...(storedById.get(item.id ?? item.sku) ?? {})
+  }));
+  const customItems = storedItems.filter((item) => !defaultIds.has(item.id ?? item.sku));
+
+  return [...mergedDefaults, ...customItems];
+}
+
+function readStoredState(key, fallback, normalize) {
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) {
+      return fallback;
+    }
+
+    const parsed = JSON.parse(raw);
+    return normalize ? normalize(parsed) : parsed;
+  } catch {
+    return fallback;
+  }
+}
+
+function useStoredState(key, fallback, normalize) {
+  const [state, setState] = React.useState(() => readStoredState(key, fallback, normalize));
+
+  React.useEffect(() => {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(state));
+    } catch {
+      // Local persistence is a convenience layer; the app can still run without it.
+    }
+  }, [key, state]);
+
+  return [state, setState];
+}
+
+function App() {
+  const [accounts, setAccounts] = useStoredState(storageKeys.accounts, initialAccounts, (stored) =>
+    mergeById(initialAccounts, stored)
+  );
+  const [currentAccountId, setCurrentAccountId] = useStoredState(storageKeys.currentAccountId, null);
+  const [sessionToken, setSessionToken] = useStoredState(storageKeys.sessionToken, null);
+  const [loginForm, setLoginForm] = React.useState({ username: "ryan", password: "ryan123" });
+  const [loginError, setLoginError] = React.useState("");
+  const [syncStatus, setSyncStatus] = React.useState("local");
+  const [orders, setOrders] = useStoredState(storageKeys.orders, initialOrders);
+  const [batches, setBatches] = useStoredState(storageKeys.batches, initialBatches);
+  const [inventory, setInventory] = useStoredState(storageKeys.inventory, initialInventory);
+  const [selectedBatchId, setSelectedBatchId] = React.useState(initialBatches[0].id);
+  const [activeStatus, setActiveStatus] = React.useState("all");
+  const [query, setQuery] = React.useState("");
+  const [selectedOrderId, setSelectedOrderId] = React.useState(initialOrders[0].id);
+  const [isCreateOpen, setIsCreateOpen] = React.useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const [userDraft, setUserDraft] = React.useState({
+    username: "",
+    password: "",
+    displayName: "",
+    role: "staff",
+    initials: "",
+    color: "#11664f"
+  });
+  const [draft, setDraft] = React.useState({
+    customer: "",
+    orderKind: "customer",
+    phone: "",
+    product: "",
+    source: "",
+    city: "Adelaide",
+    priority: "Standard",
+    batchId: nearestOpenBatchId(initialBatches),
+    assigneeId: "staff-vn",
+    purchaserId: "staff-vn",
+    weightKg: "",
+    exchangeRate: String(exchangeRate),
+    aud: "",
+    shippingAud: "",
+    intlShippingAud: "",
+    depositVnd: "",
+    outstandingVnd: "",
+    serviceFee: "10",
+    note: ""
+  });
+
+  const selectedOrder = orders.find((order) => order.id === selectedOrderId) ?? orders[0];
+  const selectedBatch = batches.find((batch) => batch.id === selectedBatchId) ?? batches[0];
+  const visibleOrders = orders.filter((order) => {
+    const matchesStatus = activeStatus === "all" || order.status === activeStatus;
+    const matchesBatch = selectedBatchId === "all" || order.batchId === selectedBatchId;
+    const searchable = `${order.id} ${order.customer} ${order.product} ${order.source}`.toLowerCase();
+    return matchesStatus && matchesBatch && searchable.includes(query.toLowerCase());
+  });
+
+  const revenue = orders.reduce((sum, order) => sum + finance(order).customerTotalVnd, 0);
+  const expectedMargin = orders.reduce((sum, order) => sum + finance(order).grossProfitVnd, 0);
+  const cashIn = orders.reduce((sum, order) => sum + finance(order).cashInVnd, 0);
+  const cashOut = orders.reduce((sum, order) => sum + finance(order).cashOutVnd, 0);
+  const activeOrders = orders.filter((order) => order.status !== "done").length;
+  const selectedBatchOrders = selectedBatchId === "all" ? orders : orders.filter((order) => order.batchId === selectedBatchId);
+  const selectedBatchWeight = selectedBatchOrders.reduce((sum, order) => sum + order.weightKg, 0);
+  const selectedBatchValue = selectedBatchOrders.reduce((sum, order) => sum + finance(order).customerTotalVnd, 0);
+  const selectedBatchCashIn = selectedBatchOrders.reduce((sum, order) => sum + finance(order).cashInVnd, 0);
+  const selectedBatchCashOut = selectedBatchOrders.reduce((sum, order) => sum + finance(order).cashOutVnd, 0);
+  const selectedBatchProfit = selectedBatchOrders.reduce((sum, order) => sum + finance(order).grossProfitVnd, 0);
+  const selectedFinance = finance(selectedOrder);
+  const nearestBatch = batches.find((batch) => batch.id === nearestOpenBatchId(batches)) ?? batches[0];
+  const activeTimelineBatch = selectedBatchId === "all" ? nearestBatch : selectedBatch;
+  const activeAccount = accounts.find((account) => account.id === currentAccountId) ?? accounts[0];
+  const isAdmin = activeAccount.role === "admin";
+  const isGeneralManager = activeAccount.role === "general_manager";
+  const canSeeProfit = isAdmin || isGeneralManager;
+  const canManageUsers = isAdmin;
+
+  function applyServerState(serverState) {
+    if (!serverState) return;
+    if (Array.isArray(serverState.accounts) && serverState.accounts.length) setAccounts(serverState.accounts);
+    if (Array.isArray(serverState.orders) && serverState.orders.length) setOrders(serverState.orders);
+    if (Array.isArray(serverState.batches) && serverState.batches.length) setBatches(serverState.batches);
+    if (Array.isArray(serverState.inventory) && serverState.inventory.length) setInventory(serverState.inventory);
+  }
+
+  React.useEffect(() => {
+    if (currentAccountId && !accounts.some((account) => account.id === currentAccountId && account.active)) {
+      setCurrentAccountId(null);
+      setSessionToken(null);
+    }
+  }, [accounts, currentAccountId, setCurrentAccountId, setSessionToken]);
+
+  React.useEffect(() => {
+    if (!sessionToken || !currentAccountId) return;
+
+    let ignore = false;
+    fetch("/api/state", {
+      headers: { Authorization: `Bearer ${sessionToken}` }
+    })
+      .then((response) => {
+        if (response.status === 401) {
+          throw new Error("session expired");
+        }
+        if (!response.ok) throw new Error("state fetch failed");
+        return response.json();
+      })
+      .then((data) => {
+        if (ignore) return;
+        applyServerState(data.state);
+        setSyncStatus("cloud");
+      })
+      .catch((error) => {
+        if (ignore) return;
+        setSyncStatus("local");
+        if (error.message === "session expired") {
+          setSessionToken(null);
+          setCurrentAccountId(null);
+          setLoginError("Phiên đăng nhập đã hết hạn, đăng nhập lại để sync cloud.");
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [sessionToken, currentAccountId, setCurrentAccountId, setSessionToken]);
+
+  React.useEffect(() => {
+    if (!sessionToken || !currentAccountId) return;
+
+    const timeout = window.setTimeout(() => {
+      fetch("/api/state", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionToken}`
+        },
+        body: JSON.stringify({ state: { accounts, orders, batches, inventory } })
+      })
+        .then((response) => {
+          if (response.status === 401) {
+            throw new Error("session expired");
+          }
+          if (!response.ok) throw new Error("state sync failed");
+          setSyncStatus("cloud");
+        })
+        .catch((error) => {
+          setSyncStatus("local");
+          if (error.message === "session expired") {
+            setSessionToken(null);
+            setCurrentAccountId(null);
+            setLoginError("Phiên đăng nhập đã hết hạn, đăng nhập lại để sync cloud.");
+          }
+        });
+    }, 450);
+
+    return () => window.clearTimeout(timeout);
+  }, [sessionToken, currentAccountId, accounts, orders, batches, inventory, setCurrentAccountId, setSessionToken]);
+
+  async function handleLogin(event) {
+    event.preventDefault();
+    try {
+      const response = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(loginForm)
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSessionToken(data.token);
+        setLoginError("");
+        setCurrentAccountId(data.account.id);
+        applyServerState(data.state);
+        setSyncStatus("cloud");
+        return;
+      }
+    } catch {
+      setSyncStatus("local");
+    }
+
+    const account = accounts.find(
+      (item) =>
+        item.active &&
+        item.username.trim().toLowerCase() === loginForm.username.trim().toLowerCase() &&
+        item.password === loginForm.password
+    );
+
+    if (!account) {
+      setLoginError("Sai username/password hoặc user đang bị tắt.");
+      return;
+    }
+
+    setLoginError("");
+    setSessionToken(null);
+    setCurrentAccountId(account.id);
+  }
+
+  function handleLogout() {
+    if (sessionToken) {
+      fetch("/api/logout", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${sessionToken}` }
+      }).catch(() => {});
+    }
+    setSessionToken(null);
+    setCurrentAccountId(null);
+    setIsSettingsOpen(false);
+  }
+
+  function handleCreateOrder(event) {
+    event.preventDefault();
+    const nextOrder = {
+      id: `AU-${new Date().toISOString().slice(2, 10).replaceAll("-", "")}-${String(orders.length + 15).padStart(3, "0")}`,
+      customer: draft.customer || "Khách mới",
+      orderKind: draft.orderKind,
+      phone: draft.phone || "Chưa có SĐT",
+      product: draft.product || "Order hàng Úc mới",
+      source: draft.source || "Nguồn mua cần xác nhận",
+      city: draft.city,
+      status: "quote",
+      priority: draft.priority,
+      batchId: draft.batchId,
+      assigneeId: draft.assigneeId,
+      purchaserId: draft.purchaserId,
+      weightKg: Number(draft.weightKg || 0),
+      aud: Number(draft.aud || 0),
+      exchangeRate: Number(draft.exchangeRate || exchangeRate),
+      serviceFee: Number(draft.serviceFee || 10),
+      shippingAud: Number(draft.shippingAud || 0),
+      intlShippingAud: Number(draft.intlShippingAud || 0),
+      depositVnd: Number(draft.depositVnd || 0),
+      outstandingVnd: Number(draft.outstandingVnd || 0),
+      eta: "Chờ chốt",
+      margin: 12,
+      tracking: "Chưa tạo",
+      note: draft.note || "Order mới cần xác nhận giá, cọc và nguồn hàng trước khi mua."
+    };
+
+    setOrders((current) => [nextOrder, ...current]);
+    setSelectedOrderId(nextOrder.id);
+    setActiveStatus("all");
+    setIsCreateOpen(false);
+    setDraft({
+      customer: "",
+      orderKind: "customer",
+      phone: "",
+      product: "",
+      source: "",
+      city: "Adelaide",
+      priority: "Standard",
+      batchId: nearestOpenBatchId(batches),
+      assigneeId: activeAccount.role === "staff" ? activeAccount.id : "staff-vn",
+      purchaserId: activeAccount.role === "staff" ? activeAccount.id : "staff-vn",
+      weightKg: "",
+      exchangeRate: String(exchangeRate),
+      aud: "",
+      shippingAud: "",
+      intlShippingAud: "",
+      depositVnd: "",
+      outstandingVnd: "",
+      serviceFee: "10",
+      note: ""
+    });
+  }
+
+  function advanceSelectedOrder() {
+    const currentIndex = statusFlow.findIndex((status) => status.id === selectedOrder.status);
+    const nextStatus = statusFlow[Math.min(currentIndex + 1, statusFlow.length - 1)]?.id;
+
+    setOrders((current) =>
+      current.map((order) =>
+        order.id === selectedOrder.id
+          ? {
+              ...order,
+              status: nextStatus,
+              eta: nextStatus === "done" ? "Đã giao" : order.eta
+            }
+          : order
+      )
+    );
+  }
+
+  function updateBatchStatus(batchId, nextStatus) {
+    setBatches((current) =>
+      current.map((batch) =>
+        batch.id === batchId
+          ? {
+              ...batch,
+              status: nextStatus
+            }
+          : batch
+      )
+    );
+  }
+
+  function updateSelectedOrderBatch(nextBatchId) {
+    setOrders((current) =>
+      current.map((order) =>
+        order.id === selectedOrder.id
+          ? {
+              ...order,
+              batchId: nextBatchId
+            }
+          : order
+      )
+    );
+  }
+
+  function updateSelectedOrderAssignee(nextAssigneeId) {
+    setOrders((current) => updateOrderField(current, selectedOrder.id, "assigneeId", nextAssigneeId));
+  }
+
+  function updateSelectedOrderPurchaser(nextPurchaserId) {
+    setOrders((current) => updateOrderField(current, selectedOrder.id, "purchaserId", nextPurchaserId));
+  }
+
+  function updateSelectedOrderMoney(field, value) {
+    setOrders((current) => updateOrderField(current, selectedOrder.id, field, Number(value || 0)));
+  }
+
+  function updateSelectedOrderNote(value) {
+    setOrders((current) => updateOrderField(current, selectedOrder.id, "note", value));
+  }
+
+  function getBatch(orderBatchId) {
+    return batches.find((batch) => batch.id === orderBatchId);
+  }
+
+  function getAccount(accountId) {
+    return accounts.find((account) => account.id === accountId) ?? accounts[0];
+  }
+
+  function handleCreateUser(event) {
+    event.preventDefault();
+    const username = userDraft.username.trim();
+    const displayName = userDraft.displayName.trim() || username;
+
+    if (!username || !userDraft.password) {
+      return;
+    }
+
+    const exists = accounts.some((account) => account.username.toLowerCase() === username.toLowerCase());
+    if (exists) {
+      return;
+    }
+
+    const nextUser = {
+      id: `${username.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now().toString(36)}`,
+      username,
+      password: userDraft.password,
+      displayName,
+      role: userDraft.role,
+      label: roleLabel(userDraft.role),
+      color: userDraft.color,
+      initials: userDraft.initials.trim().toUpperCase() || normalizeInitials(displayName || username),
+      active: true
+    };
+
+    setAccounts((current) => [...current, nextUser]);
+    setUserDraft({
+      username: "",
+      password: "",
+      displayName: "",
+      role: "staff",
+      initials: "",
+      color: "#11664f"
+    });
+  }
+
+  function updateAccount(accountId, field, value) {
+    setAccounts((current) =>
+      current.map((account) =>
+        account.id === accountId
+          ? {
+              ...account,
+              [field]: value,
+              label: field === "role" ? roleLabel(value) : account.label
+            }
+          : account
+      )
+    );
+  }
+
+  function removeAccount(accountId) {
+    if (accountId === "ryan" || accountId === currentAccountId) {
+      return;
+    }
+
+    setAccounts((current) => current.filter((account) => account.id !== accountId));
+    setOrders((current) =>
+      current.map((order) =>
+        order.assigneeId === accountId
+          ? {
+              ...order,
+              assigneeId: "ryan"
+            }
+          : order
+      )
+    );
+  }
+
+  if (!currentAccountId) {
+    return (
+      <div className="login-page">
+        <form className="login-panel" onSubmit={handleLogin}>
+          <div className="brand login-brand">
+            <div className="brand-mark">
+              <Gem size={22} />
+            </div>
+            <div>
+              <p>Australia Pacific</p>
+              <span>Group Order</span>
+            </div>
+          </div>
+          <div>
+            <span className="eyebrow">Secure workspace</span>
+            <h1>Australia Pacific Group Order</h1>
+          </div>
+          <div className="login-fields">
+            <label>
+              Username
+              <input
+                value={loginForm.username}
+                onChange={(event) => setLoginForm({ ...loginForm, username: event.target.value })}
+                placeholder="ryan"
+              />
+            </label>
+            <label>
+              Password
+              <input
+                type="password"
+                value={loginForm.password}
+                onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
+                placeholder="••••••"
+              />
+            </label>
+          </div>
+          {loginError && <p className="login-error">{loginError}</p>}
+          <button className="primary-button" type="submit">
+            <LockKeyhole size={17} />
+            Đăng nhập
+          </button>
+          <div className="demo-credentials">
+            <span>Admin: ryan / ryan123</span>
+            <span>General Manager: manager / manager123</span>
+            <span>Staff: staff.vn / staff123</span>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-mark">
+            <Gem size={22} />
+          </div>
+          <div>
+            <p>Australia Pacific</p>
+            <span>Group Order</span>
+          </div>
+        </div>
+
+        <nav className="nav-list" aria-label="Điều hướng chính">
+          {[
+            ["Tổng quan", LineChart],
+            ["Đơn hàng", ClipboardList],
+            ["Khách VIP", UserRound],
+            ["Hàng sẵn bán", Boxes],
+            ["Cước bay", Plane],
+            ["Thu/chi", CreditCard]
+          ].map(([label, Icon], index) => (
+            <button className={index === 0 ? "nav-item active" : "nav-item"} key={label}>
+              <Icon size={18} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="concierge-card">
+          <div className="visual-route" aria-hidden="true">
+            <span className="pin au">AU</span>
+            <span className="pin vn">VN</span>
+            <span className="route-line" />
+          </div>
+          <p>Luxury Ops Standard</p>
+          <strong>Gom lô, giữ margin, báo khách rõ từng chặng.</strong>
+        </div>
+      </aside>
+
+      <main className="workspace">
+        <header className="topbar">
+          <div>
+            <span className="eyebrow">Australia Pacific Group</span>
+            <h1>Australia Pacific Group Order</h1>
+          </div>
+          <div className="top-actions">
+            <div className="account-chip">
+              <AccountAvatar account={activeAccount} />
+              <div>
+                <strong>{activeAccount.username}</strong>
+                <span>{activeAccount.label} · {syncStatus === "cloud" ? "Cloud sync" : "Local"}</span>
+              </div>
+            </div>
+            {canManageUsers && (
+              <button className="icon-button" aria-label="Cài đặt user" onClick={() => setIsSettingsOpen(true)}>
+                <Settings size={18} />
+              </button>
+            )}
+            <button className="icon-button" aria-label="Thông báo">
+              <Bell size={18} />
+            </button>
+            <button className="icon-button" aria-label="Đăng xuất" onClick={handleLogout}>
+              <LogOut size={18} />
+            </button>
+            <button className="primary-button" onClick={() => setIsCreateOpen(true)}>
+              <Plus size={18} />
+              Tạo order
+            </button>
+          </div>
+        </header>
+
+        <section className="hero-grid">
+          <div className="command-panel">
+            <div className="panel-head">
+              <div>
+                <span className="eyebrow">Live control room</span>
+                <h2>Vận hành trong ngày</h2>
+              </div>
+              <span className="rate-pill">AUD/VND {formatter.format(exchangeRate)}</span>
+            </div>
+
+            <div className="metric-grid">
+              <Metric label="Phải thu khách" value={vnd(revenue)} trend="Theo tỉ giá từng đơn" icon={TrendingUp} />
+              <Metric label="Tiền đã thu" value={vnd(cashIn)} trend="Tiền cọc đã nhận" icon={ShieldCheck} />
+              <Metric label="Tiền đã chi" value={vnd(cashOut)} trend="Hàng + ship Úc + cước bay" icon={CreditCard} />
+              {canSeeProfit ? (
+                <Metric label="Lãi gộp dự kiến" value={vnd(expectedMargin)} trend={`${activeOrders} order đang chạy`} icon={Sparkles} />
+              ) : (
+                <Metric label="Order đang chạy" value={String(activeOrders)} trend="Đã ẩn lãi/lỗ" icon={Clock3} />
+              )}
+            </div>
+          </div>
+
+          <div className="priority-panel">
+            <div className="panel-head compact">
+              <h2>Việc cần xử lý</h2>
+              <CalendarDays size={18} />
+            </div>
+            <div className="task-list">
+              {tasks.map((task) => (
+                <div className="task-row" key={task.title}>
+                  <span className={`task-dot ${task.tone}`} />
+                  <div>
+                    <strong>{task.title}</strong>
+                    <p>{task.time}</p>
+                  </div>
+                  <ArrowUpRight size={16} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="status-board">
+          {statusFlow.map((status) => {
+            const count = orders.filter((order) => order.status === status.id).length;
+            const Icon = status.icon;
+            return (
+              <button
+                className={activeStatus === status.id ? "status-tile selected" : "status-tile"}
+                key={status.id}
+                onClick={() => setActiveStatus(status.id)}
+              >
+                <Icon size={18} />
+                <span>{status.label}</span>
+                <strong>{count}</strong>
+              </button>
+            );
+          })}
+        </section>
+
+        <section className="batch-section">
+          <div className="batch-head">
+            <div>
+              <span className="eyebrow">Shipment batches</span>
+              <h2>Quản lý theo từng đợt hàng</h2>
+            </div>
+            <button className="ghost-button" onClick={() => setSelectedBatchId("all")}>
+              <Filter size={17} />
+              Tất cả đợt
+            </button>
+          </div>
+
+          <div className="batch-grid">
+            {batches.map((batch) => {
+              const batchOrders = orders.filter((order) => order.batchId === batch.id);
+              const batchWeight = batchOrders.reduce((sum, order) => sum + order.weightKg, 0);
+              const batchValue = batchOrders.reduce((sum, order) => sum + finance(order).customerTotalVnd, 0);
+              const batchCashIn = batchOrders.reduce((sum, order) => sum + finance(order).cashInVnd, 0);
+              const fillRate = Math.min(100, Math.round((batchWeight / batch.capacityKg) * 100));
+
+              return (
+                <button
+                  className={selectedBatchId === batch.id ? "batch-card selected" : "batch-card"}
+                  key={batch.id}
+                  onClick={() => setSelectedBatchId(batch.id)}
+                >
+                  <div className="batch-card-head">
+                    <div>
+                      <strong>{batch.name}</strong>
+                      <span>{batch.code}</span>
+                    </div>
+                    <em className={`batch-chip ${batch.status}`}>{batchStatusLabel(batch.status)}</em>
+                  </div>
+                  <div className="batch-route">
+                    <Plane size={16} />
+                    <span>{batch.route}</span>
+                  </div>
+                  <div className="batch-stats">
+                    <div>
+                      <span>Order</span>
+                      <strong>{batchOrders.length}</strong>
+                    </div>
+                    <div>
+                      <span>Kg</span>
+                      <strong>
+                        {batchWeight.toFixed(1)}/{batch.capacityKg}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Giá trị</span>
+                      <strong>{vnd(batchValue)}</strong>
+                    </div>
+                  </div>
+                  <div className="batch-cashline">
+                    <span>Đã thu</span>
+                    <strong>{vnd(batchCashIn)}</strong>
+                    <em>{vnd(batchValue - batchCashIn)} còn phải thu</em>
+                  </div>
+                  <div className="capacity-bar" aria-label={`Sức chứa ${fillRate}%`}>
+                    <span style={{ width: `${fillRate}%` }} />
+                  </div>
+                  <div className="batch-footer">
+                    <span>Chốt {batch.cutoff}</span>
+                    <span>Bay {batch.departure}</span>
+                  </div>
+                  <div className="batch-actions">
+                    {batch.status === "open" ? (
+                      <span
+                        className="batch-action"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          updateBatchStatus(batch.id, "closed");
+                        }}
+                      >
+                        Chốt đợt
+                      </span>
+                    ) : (
+                      <span
+                        className="batch-action muted"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          updateBatchStatus(batch.id, "open");
+                        }}
+                      >
+                        Mở lại
+                      </span>
+                    )}
+                    {batch.status === "closed" && (
+                      <span
+                        className="batch-action"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          updateBatchStatus(batch.id, "inTransit");
+                        }}
+                      >
+                        Cho bay
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="batch-summary">
+            <div>
+              <span>Đợt đang xem</span>
+              <strong>{selectedBatchId === "all" ? "Tất cả đợt hàng" : selectedBatch.name}</strong>
+            </div>
+            <div>
+              <span>Số order</span>
+              <strong>{selectedBatchOrders.length}</strong>
+            </div>
+            <div>
+              <span>Tổng kg</span>
+              <strong>{selectedBatchWeight.toFixed(1)}kg</strong>
+            </div>
+            <div>
+              <span>Giá trị lô</span>
+              <strong>{vnd(selectedBatchValue)}</strong>
+            </div>
+            <div>
+              <span>Tiền vào</span>
+              <strong>{vnd(selectedBatchCashIn)}</strong>
+            </div>
+            <div>
+              <span>Tiền ra</span>
+              <strong>{vnd(selectedBatchCashOut)}</strong>
+            </div>
+            {canSeeProfit && (
+              <div>
+                <span>Lãi gộp</span>
+                <strong>{vnd(selectedBatchProfit)}</strong>
+              </div>
+            )}
+          </div>
+
+          <div className="shipment-timeline-board">
+            <div className="timeline-board-head">
+              <div>
+                <span className="eyebrow">Purchase timing</span>
+                <h2>{activeTimelineBatch.name}</h2>
+              </div>
+              <span className="rate-pill">Nên mua trước {activeTimelineBatch.cutoff}</span>
+            </div>
+            <div className="timeline-board-grid">
+              {shipmentTimeline(activeTimelineBatch).map((item) => (
+                <div className={`timeline-board-step ${item.tone}`} key={`${item.label}-${item.value}`}>
+                  <span />
+                  <strong>{item.label}</strong>
+                  <p>{item.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="inventory-section">
+          <div className="batch-head">
+            <div>
+              <span className="eyebrow">Available stock</span>
+              <h2>Hàng sẵn bán</h2>
+            </div>
+            <span className="rate-pill">
+              {inventory.reduce((sum, item) => sum + Math.max(item.onHand - item.reserved, 0), 0)} món có thể bán
+            </span>
+          </div>
+          <div className="inventory-grid">
+            {inventory.map((item) => (
+              <div className="inventory-card" key={item.sku}>
+                <div className="inventory-head">
+                  <strong>{item.name}</strong>
+                  <span>{item.status}</span>
+                </div>
+                <div className="inventory-meta">
+                  <span>{item.sku}</span>
+                  <span>{item.location}</span>
+                </div>
+                <div className="inventory-numbers">
+                  <div>
+                    <span>Sẵn bán</span>
+                    <strong>{Math.max(item.onHand - item.reserved, 0)}</strong>
+                  </div>
+                  <div>
+                    <span>Đang giữ</span>
+                    <strong>{item.reserved}</strong>
+                  </div>
+                  <div>
+                    <span>Giá bán</span>
+                    <strong>{vnd(item.sellVnd)}</strong>
+                  </div>
+                  <div>
+                    <span>Quản lý</span>
+                    <div className="assignee-cell">
+                      <AccountAvatar account={getAccount(item.ownerId)} />
+                      <span>{getAccount(item.ownerId).displayName}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="operations-layout">
+          <div className="orders-panel">
+            <div className="table-toolbar">
+              <div className="search-box">
+                <Search size={18} />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Tìm mã đơn, khách, sản phẩm..."
+                />
+              </div>
+              <button className="ghost-button" onClick={() => setActiveStatus("all")}>
+                <Filter size={17} />
+                Tất cả
+              </button>
+            </div>
+
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Mã đơn</th>
+                    <th>Đợt hàng</th>
+                    <th>Phụ trách</th>
+                    <th>Người mua</th>
+                    <th>Khách hàng</th>
+                    <th>Sản phẩm</th>
+                    <th>Trạng thái</th>
+                    <th>Tổng tiền</th>
+                    <th>Dòng tiền</th>
+                    <th>ETA</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleOrders.map((order) => (
+                    <tr
+                      className={selectedOrder.id === order.id ? "active-row" : ""}
+                      key={order.id}
+                      onClick={() => setSelectedOrderId(order.id)}
+                    >
+                      <td>
+                        <strong>{order.id}</strong>
+                        <span>{order.tracking}</span>
+                      </td>
+                      <td>
+                        <strong>{getBatch(order.batchId)?.code ?? "Chưa xếp"}</strong>
+                        <span>{order.weightKg.toFixed(1)}kg</span>
+                      </td>
+                      <td>
+                        <div className="assignee-cell">
+                          <AccountAvatar account={getAccount(order.assigneeId)} />
+                          <span>{getAccount(order.assigneeId).displayName}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="assignee-cell">
+                          <AccountAvatar account={getAccount(order.purchaserId)} />
+                          <span>{getAccount(order.purchaserId).displayName}</span>
+                        </div>
+                        <span>Mua trước {getBatch(order.batchId)?.cutoff ?? "chưa xếp chuyến"}</span>
+                      </td>
+                      <td>
+                        {order.customer}
+                        <span>{order.phone}</span>
+                      </td>
+                      <td>
+                        {order.product}
+                        <span>{order.source}</span>
+                      </td>
+                      <td>
+                        <span className={`status-chip ${order.status}`}>{statusLabel(order.status)}</span>
+                      </td>
+                      <td>
+                        {vnd(totalVnd(order))}
+                        <span>{aud(totalAud(order))} x {formatter.format(orderRate(order))}</span>
+                      </td>
+                      <td>
+                        <strong>{vnd(finance(order).cashInVnd)}</strong>
+                        <span>Còn {vnd(finance(order).outstandingVnd)}</span>
+                      </td>
+                      <td>{order.eta}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <aside className="detail-panel">
+            <div className="detail-header">
+              <div>
+                <span className="eyebrow">Order dossier</span>
+                <h2>{selectedOrder.id}</h2>
+              </div>
+              <span className="vip-badge">{selectedOrder.priority}</span>
+            </div>
+
+            <div className="customer-card">
+              <div className="avatar">{selectedOrder.customer.slice(0, 1)}</div>
+              <div>
+                <strong>{selectedOrder.customer}</strong>
+                <span>{selectedOrder.phone}</span>
+              </div>
+            </div>
+
+            <div className="owner-card">
+              <AccountAvatar account={getAccount(selectedOrder.assigneeId)} />
+              <div>
+                <span>Staff phụ trách</span>
+                <strong>{getAccount(selectedOrder.assigneeId).displayName}</strong>
+              </div>
+            </div>
+
+            <div className="owner-card purchase-owner">
+              <AccountAvatar account={getAccount(selectedOrder.purchaserId)} />
+              <div>
+                <span>Người đi mua</span>
+                <strong>{getAccount(selectedOrder.purchaserId).displayName}</strong>
+                <p>Mua trước {getBatch(selectedOrder.batchId)?.cutoff ?? "khi có chuyến gần nhất"}</p>
+              </div>
+            </div>
+
+            <div className="detail-list">
+              <Detail icon={ClipboardList} label="Loại đơn" value={selectedOrder.orderKind === "ready_stock" ? "Mua sẵn để bán" : "Order khách"} />
+              <Detail icon={ShipWheel} label="Nguồn mua" value={selectedOrder.source} />
+              <Detail icon={MapPin} label="Thành phố gom" value={selectedOrder.city} />
+              <Detail icon={Boxes} label="Đợt hàng" value={getBatch(selectedOrder.batchId)?.code ?? "Chưa xếp"} />
+              <Detail icon={Plane} label="Tracking" value={selectedOrder.tracking} />
+              <Detail icon={WalletCards} label="Đặt cọc" value={vnd(selectedOrder.depositVnd)} />
+            </div>
+
+            <label className="inline-select">
+              Xếp order vào đợt
+              <select value={selectedOrder.batchId} onChange={(event) => updateSelectedOrderBatch(event.target.value)}>
+                {batches.map((batch) => (
+                  <option value={batch.id} key={batch.id}>
+                    {batch.code} - {batchStatusLabel(batch.status)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="inline-select">
+              Giao cho Staff
+              <select
+                value={selectedOrder.assigneeId}
+                onChange={(event) => updateSelectedOrderAssignee(event.target.value)}
+              >
+                {accounts
+                  .filter((account) => account.active)
+                  .map((account) => (
+                    <option value={account.id} key={account.id}>
+                      {account.displayName} - {account.label}
+                    </option>
+                  ))}
+              </select>
+            </label>
+
+            <label className="inline-select">
+              Gán người đi mua
+              <select
+                value={selectedOrder.purchaserId}
+                onChange={(event) => updateSelectedOrderPurchaser(event.target.value)}
+              >
+                {accounts
+                  .filter((account) => account.active)
+                  .map((account) => (
+                    <option value={account.id} key={account.id}>
+                      {account.displayName} - {account.label}
+                    </option>
+                  ))}
+              </select>
+            </label>
+
+            <div className="quote-card">
+                  <div>
+                    <span>Giá hàng</span>
+                    <strong>{aud(selectedOrder.aud)}</strong>
+                  </div>
+                  <div>
+                    <span>Ship nội địa Úc</span>
+                    <strong>{aud(selectedOrder.shippingAud)}</strong>
+                  </div>
+                  <div>
+                    <span>Tỉ giá chốt</span>
+                    <strong>{formatter.format(orderRate(selectedOrder))}</strong>
+                  </div>
+                  <div>
+                    <span>Cước bay về VN</span>
+                    <strong>{aud(selectedOrder.intlShippingAud)}</strong>
+                  </div>
+                  <div>
+                    <span>Phí dịch vụ {selectedOrder.serviceFee}%</span>
+                    <strong>{vnd(selectedFinance.serviceFeeVnd)}</strong>
+                  </div>
+                  <div className="quote-total">
+                    <span>Khách cần thanh toán</span>
+                    <strong>{vnd(selectedFinance.customerTotalVnd)}</strong>
+                  </div>
+            </div>
+
+            <div className="cashflow-card">
+                  <div className="cashflow-row in">
+                    <span>Đã thu</span>
+                    <strong>{vnd(selectedFinance.cashInVnd)}</strong>
+                  </div>
+                  <div className="cashflow-row out">
+                    <span>Đã chi / cần chi</span>
+                    <strong>{vnd(selectedFinance.cashOutVnd)}</strong>
+                  </div>
+                  <div className="cashflow-row due">
+                    <span>Còn phải thu</span>
+                    <strong>{vnd(selectedFinance.outstandingVnd)}</strong>
+                  </div>
+                  {canSeeProfit ? (
+                    <div className="cashflow-row profit">
+                      <span>Lãi gộp dự kiến</span>
+                      <strong>{vnd(selectedFinance.grossProfitVnd)}</strong>
+                    </div>
+                  ) : (
+                    <div className="cashflow-row hidden-profit">
+                      <span>Lãi/lỗ</span>
+                      <strong>Đã ẩn</strong>
+                    </div>
+                  )}
+            </div>
+
+            <div className="finance-editor">
+                  <label>
+                    Tỉ giá chốt
+                    <input
+                      inputMode="decimal"
+                      value={selectedOrder.exchangeRate}
+                      onChange={(event) => updateSelectedOrderMoney("exchangeRate", event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Tiền hàng AUD
+                    <input
+                      inputMode="decimal"
+                      value={selectedOrder.aud}
+                      onChange={(event) => updateSelectedOrderMoney("aud", event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Ship Úc AUD
+                    <input
+                      inputMode="decimal"
+                      value={selectedOrder.shippingAud}
+                      onChange={(event) => updateSelectedOrderMoney("shippingAud", event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Cước bay AUD
+                    <input
+                      inputMode="decimal"
+                      value={selectedOrder.intlShippingAud}
+                      onChange={(event) => updateSelectedOrderMoney("intlShippingAud", event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Đã cọc VNĐ
+                    <input
+                      inputMode="decimal"
+                      value={selectedOrder.depositVnd}
+                      onChange={(event) => updateSelectedOrderMoney("depositVnd", event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Còn phải thu VNĐ
+                    <input
+                      inputMode="decimal"
+                      value={selectedFinance.outstandingVnd}
+                      onChange={(event) => updateSelectedOrderMoney("outstandingVnd", event.target.value)}
+                    />
+                  </label>
+            </div>
+
+            {!canSeeProfit && (
+              <div className="staff-lock-card">
+                <ShieldCheck size={18} />
+                <div>
+                  <strong>Đang đăng nhập {activeAccount.username} - quyền Staff</strong>
+                  <span>Chỉ ẩn lãi/lỗ. Tỉ giá, chi phí và dòng tiền vẫn hiển thị để xử lý đơn.</span>
+                </div>
+              </div>
+            )}
+
+            <div className="timeline">
+              {statusFlow.map((status) => {
+                const selectedIndex = statusFlow.findIndex((item) => item.id === selectedOrder.status);
+                const itemIndex = statusFlow.findIndex((item) => item.id === status.id);
+                return (
+                  <div className={itemIndex <= selectedIndex ? "timeline-item done" : "timeline-item"} key={status.id}>
+                    <span />
+                    <p>{status.label}</p>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="detail-actions">
+              <button className="primary-button" onClick={advanceSelectedOrder}>
+                <ArrowUpRight size={17} />
+                Chuyển chặng kế tiếp
+              </button>
+            </div>
+
+            <div className="note-box">
+              <span>Ghi chú vận hành</span>
+              <textarea
+                value={selectedOrder.note}
+                onChange={(event) => updateSelectedOrderNote(event.target.value)}
+                aria-label="Ghi chú vận hành"
+              />
+            </div>
+          </aside>
+        </section>
+      </main>
+
+      {isSettingsOpen && canManageUsers && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="order-modal user-settings-modal">
+            <div className="modal-head">
+              <div>
+                <span className="eyebrow">Admin settings</span>
+                <h2>Quản lý user & phân quyền</h2>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                onClick={() => setIsSettingsOpen(false)}
+                aria-label="Đóng"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="user-list">
+              {accounts.map((account) => (
+                <div className="user-row" key={account.id}>
+                  <AccountAvatar account={account} />
+                  <label>
+                    Username
+                    <input
+                      value={account.username}
+                      disabled={account.id === "ryan"}
+                      onChange={(event) => updateAccount(account.id, "username", event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Tên hiển thị
+                    <input
+                      value={account.displayName}
+                      onChange={(event) => updateAccount(account.id, "displayName", event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Password
+                    <input
+                      value={account.password}
+                      onChange={(event) => updateAccount(account.id, "password", event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Role
+                    <select value={account.role} onChange={(event) => updateAccount(account.id, "role", event.target.value)}>
+                      <option value="admin">Admin</option>
+                      <option value="general_manager">General Manager</option>
+                      <option value="staff">Staff</option>
+                    </select>
+                  </label>
+                  <label>
+                    Icon
+                    <input
+                      value={account.initials}
+                      maxLength={3}
+                      onChange={(event) => updateAccount(account.id, "initials", event.target.value.toUpperCase())}
+                    />
+                  </label>
+                  <label>
+                    Màu
+                    <input
+                      type="color"
+                      value={account.color}
+                      onChange={(event) => updateAccount(account.id, "color", event.target.value)}
+                    />
+                  </label>
+                  <label className="active-toggle">
+                    <input
+                      type="checkbox"
+                      checked={account.active}
+                      disabled={account.id === "ryan"}
+                      onChange={(event) => updateAccount(account.id, "active", event.target.checked)}
+                    />
+                    Active
+                  </label>
+                  <button
+                    className="danger-button"
+                    type="button"
+                    disabled={account.id === "ryan" || account.id === currentAccountId}
+                    onClick={() => removeAccount(account.id)}
+                  >
+                    Xóa
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <form className="add-user-form" onSubmit={handleCreateUser}>
+              <h3>Thêm user mới</h3>
+              <div className="form-grid">
+                <label>
+                  Username
+                  <input
+                    value={userDraft.username}
+                    onChange={(event) => setUserDraft({ ...userDraft, username: event.target.value })}
+                    placeholder="staff.hn"
+                  />
+                </label>
+                <label>
+                  Password
+                  <input
+                    value={userDraft.password}
+                    onChange={(event) => setUserDraft({ ...userDraft, password: event.target.value })}
+                    placeholder="Mật khẩu"
+                  />
+                </label>
+                <label>
+                  Tên hiển thị
+                  <input
+                    value={userDraft.displayName}
+                    onChange={(event) => setUserDraft({ ...userDraft, displayName: event.target.value })}
+                    placeholder="Hà Nội Ops"
+                  />
+                </label>
+                <label>
+                  Role
+                  <select value={userDraft.role} onChange={(event) => setUserDraft({ ...userDraft, role: event.target.value })}>
+                    <option value="staff">Staff</option>
+                    <option value="general_manager">General Manager</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </label>
+                <label>
+                  Icon
+                  <input
+                    value={userDraft.initials}
+                    maxLength={3}
+                    onChange={(event) => setUserDraft({ ...userDraft, initials: event.target.value.toUpperCase() })}
+                    placeholder="HN"
+                  />
+                </label>
+                <label>
+                  Màu icon
+                  <input
+                    type="color"
+                    value={userDraft.color}
+                    onChange={(event) => setUserDraft({ ...userDraft, color: event.target.value })}
+                  />
+                </label>
+              </div>
+              <div className="modal-actions">
+                <button className="primary-button" type="submit">
+                  <Plus size={17} />
+                  Thêm user
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isCreateOpen && (
+        <div className="modal-backdrop" role="presentation">
+          <form className="order-modal" onSubmit={handleCreateOrder}>
+            <div className="modal-head">
+              <div>
+                <span className="eyebrow">New dossier</span>
+                <h2>Tạo order hàng Úc</h2>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setIsCreateOpen(false)} aria-label="Đóng">
+                ×
+              </button>
+            </div>
+
+            <div className="form-grid">
+              <label>
+                Khách hàng
+                <input
+                  value={draft.customer}
+                  onChange={(event) => setDraft({ ...draft, customer: event.target.value })}
+                  placeholder="Tên khách"
+                />
+              </label>
+              <label>
+                Loại đơn
+                <select
+                  value={draft.orderKind}
+                  onChange={(event) => setDraft({ ...draft, orderKind: event.target.value })}
+                >
+                  <option value="customer">Order khách</option>
+                  <option value="ready_stock">Mua sẵn để bán</option>
+                </select>
+              </label>
+              <label>
+                Số điện thoại
+                <input
+                  value={draft.phone}
+                  onChange={(event) => setDraft({ ...draft, phone: event.target.value })}
+                  placeholder="09..."
+                />
+              </label>
+              <label className="wide">
+                Sản phẩm
+                <input
+                  value={draft.product}
+                  onChange={(event) => setDraft({ ...draft, product: event.target.value })}
+                  placeholder="Tên món khách cần order"
+                />
+              </label>
+              <label>
+                Nguồn mua
+                <input
+                  value={draft.source}
+                  onChange={(event) => setDraft({ ...draft, source: event.target.value })}
+                  placeholder="Website/cửa hàng"
+                />
+              </label>
+              <label>
+                Thành phố gom
+                <select value={draft.city} onChange={(event) => setDraft({ ...draft, city: event.target.value })}>
+                  <option>Adelaide</option>
+                  <option>Melbourne</option>
+                  <option>Sydney</option>
+                  <option>Brisbane</option>
+                  <option>Perth</option>
+                </select>
+              </label>
+              <label>
+                Xếp vào đợt
+                <select
+                  value={draft.batchId}
+                  onChange={(event) => setDraft({ ...draft, batchId: event.target.value })}
+                >
+                  {batches.map((batch) => (
+                    <option value={batch.id} key={batch.id}>
+                      {batch.code} - {batchStatusLabel(batch.status)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Staff phụ trách
+                <select
+                  value={draft.assigneeId}
+                  onChange={(event) => setDraft({ ...draft, assigneeId: event.target.value })}
+                >
+                  {accounts
+                    .filter((account) => account.active)
+                    .map((account) => (
+                      <option value={account.id} key={account.id}>
+                        {account.displayName} - {account.label}
+                      </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Người đi mua
+                <select
+                  value={draft.purchaserId}
+                  onChange={(event) => setDraft({ ...draft, purchaserId: event.target.value })}
+                >
+                  {accounts
+                    .filter((account) => account.active)
+                    .map((account) => (
+                      <option value={account.id} key={account.id}>
+                        {account.displayName} - {account.label}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="wide">
+                Chuyến ship gần nhất
+                <input
+                  value={`${getBatch(draft.batchId)?.code ?? "Chưa xếp"} - mua trước ${getBatch(draft.batchId)?.cutoff ?? "chưa có giờ chốt"}`}
+                  readOnly
+                />
+              </label>
+              <label>
+                Cân nặng kg
+                <input
+                  inputMode="decimal"
+                  value={draft.weightKg}
+                  onChange={(event) => setDraft({ ...draft, weightKg: event.target.value })}
+                  placeholder="0.0"
+                />
+              </label>
+              <>
+                <label>
+                    Giá AUD
+                    <input
+                      inputMode="decimal"
+                      value={draft.aud}
+                      onChange={(event) => setDraft({ ...draft, aud: event.target.value })}
+                      placeholder="0"
+                    />
+                  </label>
+                  <label>
+                    Ship nội địa Úc AUD
+                    <input
+                      inputMode="decimal"
+                      value={draft.shippingAud}
+                      onChange={(event) => setDraft({ ...draft, shippingAud: event.target.value })}
+                      placeholder="0"
+                    />
+                  </label>
+                  <label>
+                    Tỉ giá chốt
+                    <input
+                      inputMode="decimal"
+                      value={draft.exchangeRate}
+                      onChange={(event) => setDraft({ ...draft, exchangeRate: event.target.value })}
+                      placeholder="17150"
+                    />
+                  </label>
+                  <label>
+                    Cước bay AUD
+                    <input
+                      inputMode="decimal"
+                      value={draft.intlShippingAud}
+                      onChange={(event) => setDraft({ ...draft, intlShippingAud: event.target.value })}
+                      placeholder="0"
+                    />
+                  </label>
+                  <label>
+                    Đã cọc VNĐ
+                    <input
+                      inputMode="decimal"
+                      value={draft.depositVnd}
+                      onChange={(event) => setDraft({ ...draft, depositVnd: event.target.value })}
+                      placeholder="0"
+                    />
+                  </label>
+                  <label>
+                    Còn phải thu VNĐ
+                    <input
+                      inputMode="decimal"
+                      value={draft.outstandingVnd}
+                      onChange={(event) => setDraft({ ...draft, outstandingVnd: event.target.value })}
+                      placeholder="0"
+                    />
+                  </label>
+                  <label>
+                    Phí dịch vụ %
+                    <input
+                      inputMode="decimal"
+                      value={draft.serviceFee}
+                      onChange={(event) => setDraft({ ...draft, serviceFee: event.target.value })}
+                    />
+                </label>
+              </>
+              <label>
+                Ưu tiên
+                <select
+                  value={draft.priority}
+                  onChange={(event) => setDraft({ ...draft, priority: event.target.value })}
+                >
+                  <option>Standard</option>
+                  <option>High</option>
+                  <option>VIP</option>
+                </select>
+              </label>
+              <label className="wide">
+                Note
+                <textarea
+                  value={draft.note}
+                  onChange={(event) => setDraft({ ...draft, note: event.target.value })}
+                  placeholder="Ghi chú cọc, bill, màu, size, cách giao, rủi ro..."
+                />
+              </label>
+            </div>
+
+            <div className="modal-actions">
+              <button className="ghost-button" type="button" onClick={() => setIsCreateOpen(false)}>
+                Hủy
+              </button>
+              <button className="primary-button" type="submit">
+                <Plus size={17} />
+                Lưu order
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AccountAvatar({ account }) {
+  return (
+    <span className="account-avatar" style={{ background: account.color }}>
+      {account.initials || normalizeInitials(account.displayName || account.username)}
+    </span>
+  );
+}
+
+function Metric({ label, value, trend, icon: Icon }) {
+  return (
+    <div className="metric-card">
+      <div className="metric-icon">
+        <Icon size={18} />
+      </div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <p>{trend}</p>
+    </div>
+  );
+}
+
+function Detail({ icon: Icon, label, value }) {
+  return (
+    <div className="detail-row">
+      <Icon size={17} />
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+export default App;
