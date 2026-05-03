@@ -413,6 +413,11 @@ h2 {
   background: #fffaf2;
 }
 
+.icon-button.active {
+  color: #fffaf0;
+  background: #21231f;
+}
+
 .primary-button,
 .ghost-button {
   display: inline-flex;
@@ -440,6 +445,21 @@ h2 {
   grid-template-columns: minmax(0, 1fr) 340px;
   gap: 16px;
   margin-bottom: 16px;
+}
+
+.focused-view {
+  display: grid;
+  gap: 16px;
+}
+
+.focus-hero {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.focus-status {
+  margin-bottom: 0;
 }
 
 .command-panel,
@@ -894,6 +914,197 @@ h2 {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
+}
+
+.vip-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.vip-card,
+.freight-card {
+  min-width: 0;
+  padding: 16px;
+  background: #fffaf2;
+  border: 1px solid rgba(33, 29, 23, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 18px 45px rgba(43, 33, 19, 0.08);
+}
+
+.vip-card {
+  display: grid;
+  gap: 12px;
+}
+
+.vip-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vip-card-head span:first-child {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 0 8px;
+  color: #251d17;
+  background: #f2d99b;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.vip-card > p,
+.client-plan p,
+.process-card p,
+.notification-card p,
+.mini-order-row em {
+  color: #6f665b;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.vip-contact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.client-plan {
+  padding: 12px;
+  background: #f7f2e9;
+  border: 1px solid rgba(33, 29, 23, 0.08);
+  border-radius: 8px;
+}
+
+.client-plan strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #201d18;
+}
+
+.stock-layout,
+.cashflow-layout,
+.notification-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 16px;
+}
+
+.compact-table {
+  min-width: 980px;
+}
+
+.freight-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.freight-card {
+  min-height: 0;
+}
+
+.shipment-checklist {
+  display: grid;
+  gap: 8px;
+}
+
+.freight-order-list {
+  display: grid;
+  gap: 8px;
+}
+
+.mini-order-row {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  background: #f8f3ea;
+  border-radius: 8px;
+}
+
+.mini-order-row span {
+  color: #8d6a2c;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.mini-order-row strong {
+  color: #201d18;
+  font-size: 0.84rem;
+}
+
+.mini-order-row em {
+  font-style: normal;
+}
+
+.process-card {
+  margin-bottom: 10px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.08);
+  border-radius: 8px;
+}
+
+.process-card strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #201d18;
+  font-size: 0.92rem;
+}
+
+.money-due {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  padding: 0 9px;
+  color: #9b2c3a;
+  background: #f6dbe0;
+  border-radius: 999px;
+  font-weight: 900;
+}
+
+.notification-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+}
+
+.notification-card {
+  min-height: 150px;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.08);
+  border-left: 4px solid #11664f;
+  border-radius: 8px;
+}
+
+.notification-card.urgent {
+  border-left-color: #9b2c3a;
+}
+
+.notification-card.gold {
+  border-left-color: #b7842a;
+}
+
+.notification-card.green {
+  border-left-color: #11664f;
+}
+
+.notification-card span {
+  display: block;
+  margin-bottom: 8px;
+  color: #8d6a2c;
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.notification-card strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #201d18;
 }
 
 .inventory-card {
@@ -1655,7 +1866,10 @@ tbody tr:hover,
   }
 
   .hero-grid,
-  .operations-layout {
+  .operations-layout,
+  .stock-layout,
+  .cashflow-layout,
+  .notification-layout {
     grid-template-columns: 1fr;
   }
 
@@ -1664,7 +1878,10 @@ tbody tr:hover,
   }
 
   .timeline-board-grid,
-  .inventory-grid {
+  .inventory-grid,
+  .focus-hero,
+  .vip-grid,
+  .freight-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1707,6 +1924,12 @@ tbody tr:hover,
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .focus-hero,
+  .vip-grid,
+  .notification-grid {
+    grid-template-columns: 1fr;
+  }
+
   .cashflow-card,
   .finance-editor {
     grid-template-columns: 1fr;
@@ -1741,6 +1964,7 @@ tbody tr:hover,
 
   .timeline-board-grid,
   .inventory-grid,
+  .vip-contact-grid,
   .inventory-numbers {
     grid-template-columns: 1fr;
   }

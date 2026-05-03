@@ -322,6 +322,15 @@ const tasks = [
   { title: "Nhắn khách VIP xác nhận màu túi", time: "19:00", tone: "green" }
 ];
 
+const navItems = [
+  { id: "overview", label: "Tổng quan", icon: LineChart, title: "Australia Pacific Group Order", eyebrow: "Australia Pacific Group" },
+  { id: "orders", label: "Đơn hàng", icon: ClipboardList, title: "Đơn hàng", eyebrow: "Order operations" },
+  { id: "vip", label: "Khách VIP", icon: UserRound, title: "Khách VIP", eyebrow: "Client care" },
+  { id: "stock", label: "Hàng sẵn bán", icon: Boxes, title: "Hàng sẵn bán", eyebrow: "Ready stock" },
+  { id: "freight", label: "Cước bay", icon: Plane, title: "Cước bay & chuyến ship", eyebrow: "Freight control" },
+  { id: "cashflow", label: "Thu/chi", icon: CreditCard, title: "Thu/chi", eyebrow: "Cashflow control" }
+];
+
 const formatter = new Intl.NumberFormat("vi-VN");
 
 function aud(value) {
@@ -498,6 +507,7 @@ function App() {
   );
   const [currentAccountId, setCurrentAccountId] = useStoredState(storageKeys.currentAccountId, null);
   const [sessionToken, setSessionToken] = useStoredState(storageKeys.sessionToken, null);
+  const [activeView, setActiveView] = React.useState("overview");
   const [loginForm, setLoginForm] = React.useState({ username: "ryan", password: "ryan123" });
   const [loginError, setLoginError] = React.useState("");
   const [syncStatus, setSyncStatus] = React.useState("local");
@@ -568,6 +578,14 @@ function App() {
   const isGeneralManager = activeAccount.role === "general_manager";
   const canSeeProfit = isAdmin || isGeneralManager;
   const canManageUsers = isAdmin;
+  const activeViewMeta = navItems.find((item) => item.id === activeView) ?? navItems[0];
+  const vipOrders = orders.filter((order) => order.priority === "VIP" || order.priority === "High");
+  const readyStockOrders = orders.filter((order) => order.orderKind === "ready_stock");
+  const receivableOrders = orders.filter((order) => finance(order).outstandingVnd > 0);
+  const freightTotalAud = orders.reduce((sum, order) => sum + money(order.intlShippingAud), 0);
+  const freightTotalVnd = orders.reduce((sum, order) => sum + money(order.intlShippingAud) * orderRate(order), 0);
+  const stockAvailable = inventory.reduce((sum, item) => sum + Math.max(item.onHand - item.reserved, 0), 0);
+  const stockRetailValue = inventory.reduce((sum, item) => sum + Math.max(item.onHand - item.reserved, 0) * money(item.sellVnd), 0);
 
   function applyServerState(serverState) {
     if (!serverState) return;
@@ -958,15 +976,13 @@ function App() {
         </div>
 
         <nav className="nav-list" aria-label="Điều hướng chính">
-          {[
-            ["Tổng quan", LineChart],
-            ["Đơn hàng", ClipboardList],
-            ["Khách VIP", UserRound],
-            ["Hàng sẵn bán", Boxes],
-            ["Cước bay", Plane],
-            ["Thu/chi", CreditCard]
-          ].map(([label, Icon], index) => (
-            <button className={index === 0 ? "nav-item active" : "nav-item"} key={label}>
+          {navItems.map(({ id, label, icon: Icon }) => (
+            <button
+              className={activeView === id ? "nav-item active" : "nav-item"}
+              key={id}
+              onClick={() => setActiveView(id)}
+              type="button"
+            >
               <Icon size={18} />
               <span>{label}</span>
             </button>
@@ -987,8 +1003,8 @@ function App() {
       <main className="workspace">
         <header className="topbar">
           <div>
-            <span className="eyebrow">Australia Pacific Group</span>
-            <h1>Australia Pacific Group Order</h1>
+            <span className="eyebrow">{activeViewMeta.eyebrow}</span>
+            <h1>{activeViewMeta.title}</h1>
           </div>
           <div className="top-actions">
             <div className="account-chip">
@@ -1003,7 +1019,11 @@ function App() {
                 <Settings size={18} />
               </button>
             )}
-            <button className="icon-button" aria-label="Thông báo">
+            <button
+              className={activeView === "notifications" ? "icon-button active" : "icon-button"}
+              aria-label="Thông báo"
+              onClick={() => setActiveView("notifications")}
+            >
               <Bell size={18} />
             </button>
             <button className="icon-button" aria-label="Đăng xuất" onClick={handleLogout}>
@@ -1016,6 +1036,8 @@ function App() {
           </div>
         </header>
 
+        {activeView === "overview" && (
+          <>
         <section className="hero-grid">
           <div className="command-panel">
             <div className="panel-head">
@@ -1598,6 +1620,80 @@ function App() {
             </div>
           </aside>
         </section>
+          </>
+        )}
+
+        {activeView === "orders" && (
+          <OrdersFocusView
+            orders={orders}
+            batches={batches}
+            accounts={accounts}
+            activeStatus={activeStatus}
+            setActiveStatus={setActiveStatus}
+            query={query}
+            setQuery={setQuery}
+            selectedOrder={selectedOrder}
+            setSelectedOrderId={setSelectedOrderId}
+            getBatch={getBatch}
+            getAccount={getAccount}
+            canSeeProfit={canSeeProfit}
+            setIsCreateOpen={setIsCreateOpen}
+          />
+        )}
+
+        {activeView === "vip" && (
+          <VipFocusView
+            orders={vipOrders}
+            getBatch={getBatch}
+            getAccount={getAccount}
+            canSeeProfit={canSeeProfit}
+          />
+        )}
+
+        {activeView === "stock" && (
+          <StockFocusView
+            inventory={inventory}
+            readyStockOrders={readyStockOrders}
+            getAccount={getAccount}
+            stockAvailable={stockAvailable}
+            stockRetailValue={stockRetailValue}
+          />
+        )}
+
+        {activeView === "freight" && (
+          <FreightFocusView
+            batches={batches}
+            orders={orders}
+            getAccount={getAccount}
+            updateBatchStatus={updateBatchStatus}
+            freightTotalAud={freightTotalAud}
+            freightTotalVnd={freightTotalVnd}
+          />
+        )}
+
+        {activeView === "cashflow" && (
+          <CashflowFocusView
+            orders={orders}
+            batches={batches}
+            canSeeProfit={canSeeProfit}
+            cashIn={cashIn}
+            cashOut={cashOut}
+            revenue={revenue}
+            expectedMargin={expectedMargin}
+            receivableOrders={receivableOrders}
+          />
+        )}
+
+        {activeView === "notifications" && (
+          <NotificationsFocusView
+            tasks={tasks}
+            orders={orders}
+            batches={batches}
+            receivableOrders={receivableOrders}
+            getBatch={getBatch}
+            getAccount={getAccount}
+          />
+        )}
       </main>
 
       {isSettingsOpen && canManageUsers && (
@@ -1975,6 +2071,496 @@ function App() {
           </form>
         </div>
       )}
+    </div>
+  );
+}
+
+function OrdersFocusView({
+  orders,
+  batches,
+  accounts,
+  activeStatus,
+  setActiveStatus,
+  query,
+  setQuery,
+  selectedOrder,
+  setSelectedOrderId,
+  getBatch,
+  getAccount,
+  canSeeProfit,
+  setIsCreateOpen
+}) {
+  const filteredOrders = orders.filter((order) => {
+    const matchesStatus = activeStatus === "all" || order.status === activeStatus;
+    const searchable = `${order.id} ${order.customer} ${order.product} ${order.source} ${order.tracking}`.toLowerCase();
+    return matchesStatus && searchable.includes(query.toLowerCase());
+  });
+  const pendingPurchase = orders.filter((order) => ["quote", "deposit"].includes(order.status)).length;
+  const purchasedNotFlown = orders.filter((order) => order.status === "purchased").length;
+  const dueCollection = orders.reduce((sum, order) => sum + finance(order).outstandingVnd, 0);
+
+  return (
+    <div className="focused-view">
+      <section className="focus-hero">
+        <Metric label="Tổng order" value={String(orders.length)} trend={`${pendingPurchase} đơn cần chốt/mua`} icon={ClipboardList} />
+        <Metric label="Đã mua chờ bay" value={String(purchasedNotFlown)} trend="Kiểm tra bill, cân nặng, tracking" icon={PackageCheck} />
+        <Metric label="Còn phải thu" value={vnd(dueCollection)} trend="Ưu tiên thu trước khi giao" icon={WalletCards} />
+        <Metric
+          label={canSeeProfit ? "Lãi gộp đang chạy" : "Quyền Staff"}
+          value={canSeeProfit ? vnd(orders.reduce((sum, order) => sum + finance(order).grossProfitVnd, 0)) : "Đã ẩn"}
+          trend={canSeeProfit ? "Theo tỉ giá từng đơn" : "Không hiển thị lãi/lỗ"}
+          icon={ShieldCheck}
+        />
+      </section>
+
+      <section className="status-board focus-status">
+        <button className={activeStatus === "all" ? "status-tile selected" : "status-tile"} onClick={() => setActiveStatus("all")}>
+          <Filter size={18} />
+          <span>Tất cả</span>
+          <strong>{orders.length}</strong>
+        </button>
+        {statusFlow.map((status) => {
+          const Icon = status.icon;
+          const count = orders.filter((order) => order.status === status.id).length;
+          return (
+            <button
+              className={activeStatus === status.id ? "status-tile selected" : "status-tile"}
+              key={status.id}
+              onClick={() => setActiveStatus(status.id)}
+            >
+              <Icon size={18} />
+              <span>{status.label}</span>
+              <strong>{count}</strong>
+            </button>
+          );
+        })}
+      </section>
+
+      <section className="operations-layout">
+        <div className="orders-panel">
+          <div className="table-toolbar">
+            <div className="search-box">
+              <Search size={18} />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm mã đơn, khách, sản phẩm, tracking..." />
+            </div>
+            <button className="primary-button" onClick={() => setIsCreateOpen(true)}>
+              <Plus size={17} />
+              Tạo order
+            </button>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Mã đơn</th>
+                  <th>Khách</th>
+                  <th>Sản phẩm</th>
+                  <th>Chuyến</th>
+                  <th>Staff</th>
+                  <th>Người mua</th>
+                  <th>Tiền</th>
+                  <th>Trạng thái</th>
+                  <th>Note nhanh</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredOrders.map((order) => (
+                  <tr className={selectedOrder.id === order.id ? "active-row" : ""} key={order.id} onClick={() => setSelectedOrderId(order.id)}>
+                    <td>
+                      <strong>{order.id}</strong>
+                      <span>{order.tracking}</span>
+                    </td>
+                    <td>
+                      {order.customer}
+                      <span>{order.phone}</span>
+                    </td>
+                    <td>
+                      {order.product}
+                      <span>{order.source}</span>
+                    </td>
+                    <td>
+                      <strong>{getBatch(order.batchId)?.code ?? "Chưa xếp"}</strong>
+                      <span>Mua trước {getBatch(order.batchId)?.cutoff ?? "khi có chuyến"}</span>
+                    </td>
+                    <td>
+                      <div className="assignee-cell">
+                        <AccountAvatar account={getAccount(order.assigneeId)} />
+                        <span>{getAccount(order.assigneeId).displayName}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="assignee-cell">
+                        <AccountAvatar account={getAccount(order.purchaserId)} />
+                        <span>{getAccount(order.purchaserId).displayName}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <strong>{vnd(finance(order).customerTotalVnd)}</strong>
+                      <span>Còn thu {vnd(finance(order).outstandingVnd)}</span>
+                    </td>
+                    <td>
+                      <span className={`status-chip ${order.status}`}>{statusLabel(order.status)}</span>
+                    </td>
+                    <td>{order.note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <aside className="detail-panel">
+          <div className="detail-header">
+            <div>
+              <span className="eyebrow">Order workflow</span>
+              <h2>Chuẩn xử lý</h2>
+            </div>
+            <Clock3 size={18} />
+          </div>
+          {[
+            ["1. Báo giá", "Chốt AUD, ship Úc, cước bay, tỉ giá và còn phải thu."],
+            ["2. Cọc", "Không mua hàng giá trị cao nếu chưa có cọc hoặc duyệt của Ryan."],
+            ["3. Mua hàng", "Gán người mua, lưu bill, kiểm size/màu/serial trước cutoff chuyến."],
+            ["4. Gom chuyến", "Xếp đúng đợt bay, cân kg, tạo tracking và note rủi ro."],
+            ["5. Thu cuối", "Đối chiếu còn phải thu trước khi giao khách ở VN."],
+            ["6. Hoàn tất", "Đánh dấu done, cập nhật note chăm lại khách tốt."]
+          ].map(([title, body]) => (
+            <div className="process-card" key={title}>
+              <strong>{title}</strong>
+              <p>{body}</p>
+            </div>
+          ))}
+          <div className="note-box">
+            <span>Team đang active</span>
+            <p>{accounts.filter((account) => account.active).map((account) => `${account.displayName} (${account.label})`).join(", ")}</p>
+          </div>
+        </aside>
+      </section>
+    </div>
+  );
+}
+
+function VipFocusView({ orders, getBatch, getAccount, canSeeProfit }) {
+  const totalVipValue = orders.reduce((sum, order) => sum + finance(order).customerTotalVnd, 0);
+  const vipReceivable = orders.reduce((sum, order) => sum + finance(order).outstandingVnd, 0);
+  const vipProfit = orders.reduce((sum, order) => sum + finance(order).grossProfitVnd, 0);
+
+  return (
+    <div className="focused-view">
+      <section className="focus-hero">
+        <Metric label="Khách ưu tiên" value={String(orders.length)} trend="VIP + High priority" icon={UserRound} />
+        <Metric label="Doanh số VIP" value={vnd(totalVipValue)} trend="Giá trị cần chăm sát" icon={Gem} />
+        <Metric label="Còn phải thu" value={vnd(vipReceivable)} trend="Nhắc lịch trước khi giao" icon={WalletCards} />
+        <Metric label={canSeeProfit ? "Lãi VIP" : "Lãi/lỗ"} value={canSeeProfit ? vnd(vipProfit) : "Đã ẩn"} trend="Chỉ admin/GM xem" icon={Sparkles} />
+      </section>
+
+      <section className="vip-grid">
+        {orders.map((order) => (
+          <article className="vip-card" key={order.id}>
+            <div className="vip-card-head">
+              <div>
+                <span>{order.priority}</span>
+                <h2>{order.customer}</h2>
+              </div>
+              <span className={`status-chip ${order.status}`}>{statusLabel(order.status)}</span>
+            </div>
+            <p>{order.product}</p>
+            <div className="vip-contact-grid">
+              <Detail icon={ClipboardList} label="Mã đơn" value={order.id} />
+              <Detail icon={WalletCards} label="Còn thu" value={vnd(finance(order).outstandingVnd)} />
+              <Detail icon={Plane} label="Chuyến" value={getBatch(order.batchId)?.code ?? "Chưa xếp"} />
+              <Detail icon={UserRound} label="Staff" value={getAccount(order.assigneeId).displayName} />
+            </div>
+            <div className="client-plan">
+              <strong>Kịch bản chăm sóc</strong>
+              <p>Gửi update khi mua xong, khi hàng lên chuyến, khi về VN và sau giao 7 ngày. Với khách VIP luôn nhắn kèm hình bill/tracking nếu có.</p>
+            </div>
+            <div className="note-box">
+              <span>Ghi chú khách</span>
+              <p>{order.note}</p>
+            </div>
+          </article>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function StockFocusView({ inventory, readyStockOrders, getAccount, stockAvailable, stockRetailValue }) {
+  const reservedCount = inventory.reduce((sum, item) => sum + item.reserved, 0);
+
+  return (
+    <div className="focused-view">
+      <section className="focus-hero">
+        <Metric label="Sẵn bán" value={`${stockAvailable} món`} trend="Có thể chốt ngay tại VN" icon={Boxes} />
+        <Metric label="Đang giữ" value={`${reservedCount} món`} trend="Cần thu cọc hoặc mở bán lại" icon={ShieldCheck} />
+        <Metric label="Giá trị bán lẻ" value={vnd(stockRetailValue)} trend="Theo giá niêm yết hiện tại" icon={TrendingUp} />
+        <Metric label="Order từ hàng sẵn" value={String(readyStockOrders.length)} trend="Theo dõi bán tồn" icon={PackageCheck} />
+      </section>
+
+      <section className="stock-layout">
+        <div className="orders-panel">
+          <div className="table-toolbar">
+            <div>
+              <span className="eyebrow">Inventory</span>
+              <h2>Danh sách hàng sẵn bán tại VN</h2>
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table className="compact-table">
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Sản phẩm</th>
+                  <th>Kho/điểm giữ</th>
+                  <th>Tồn</th>
+                  <th>Đang giữ</th>
+                  <th>Có thể bán</th>
+                  <th>Giá bán</th>
+                  <th>Phụ trách</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inventory.map((item) => (
+                  <tr key={item.sku}>
+                    <td><strong>{item.sku}</strong></td>
+                    <td>
+                      {item.name}
+                      <span>{item.status}</span>
+                    </td>
+                    <td>{item.location}</td>
+                    <td>{item.onHand}</td>
+                    <td>{item.reserved}</td>
+                    <td><strong>{Math.max(item.onHand - item.reserved, 0)}</strong></td>
+                    <td>{vnd(item.sellVnd)}</td>
+                    <td>
+                      <div className="assignee-cell">
+                        <AccountAvatar account={getAccount(item.ownerId)} />
+                        <span>{getAccount(item.ownerId).displayName}</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <aside className="detail-panel">
+          <div className="detail-header">
+            <div>
+              <span className="eyebrow">Stock standard</span>
+              <h2>Quy trình bán hàng sẵn</h2>
+            </div>
+            <Boxes size={18} />
+          </div>
+          {[
+            ["Giữ hàng", "Chỉ giữ khi khách xác nhận và có deadline thu cọc."],
+            ["Mở bán lại", "Quá 24h chưa cọc thì báo Ryan/GM để mở bán."],
+            ["Giao VN", "Kiểm ảnh thật, tình trạng hộp, serial nếu là đồ điện tử."],
+            ["Note tồn", "Ghi rõ kho giữ hàng, người giữ, tình trạng seal/hộp."]
+          ].map(([title, body]) => (
+            <div className="process-card" key={title}>
+              <strong>{title}</strong>
+              <p>{body}</p>
+            </div>
+          ))}
+        </aside>
+      </section>
+    </div>
+  );
+}
+
+function FreightFocusView({ batches, orders, getAccount, updateBatchStatus, freightTotalAud, freightTotalVnd }) {
+  return (
+    <div className="focused-view">
+      <section className="focus-hero">
+        <Metric label="Số chuyến" value={String(batches.length)} trend="Theo từng đợt chốt hàng" icon={Plane} />
+        <Metric label="Tổng cước bay" value={aud(freightTotalAud)} trend={vnd(freightTotalVnd)} icon={CreditCard} />
+        <Metric label="Tổng cân nặng" value={`${orders.reduce((sum, order) => sum + order.weightKg, 0).toFixed(1)}kg`} trend="Theo order đã nhập" icon={Boxes} />
+        <Metric label="Chờ gom" value={String(orders.filter((order) => order.status === "purchased").length)} trend="Đã mua nhưng chưa bay" icon={Clock3} />
+      </section>
+
+      <section className="batch-grid freight-grid">
+        {batches.map((batch) => {
+          const batchOrders = orders.filter((order) => order.batchId === batch.id);
+          const batchWeight = batchOrders.reduce((sum, order) => sum + order.weightKg, 0);
+          const batchFreight = batchOrders.reduce((sum, order) => sum + money(order.intlShippingAud), 0);
+          const fillRate = Math.min(100, Math.round((batchWeight / batch.capacityKg) * 100));
+          return (
+            <article className="batch-card freight-card" key={batch.id}>
+              <div className="batch-card-head">
+                <div>
+                  <strong>{batch.name}</strong>
+                  <span>{batch.route}</span>
+                </div>
+                <em className={`batch-chip ${batch.status}`}>{batchStatusLabel(batch.status)}</em>
+              </div>
+              <div className="shipment-checklist">
+                <Detail icon={Clock3} label="Cutoff" value={batch.cutoff} />
+                <Detail icon={Plane} label="Bay" value={batch.departure} />
+                <Detail icon={MapPin} label="Về VN" value={batch.eta} />
+                <Detail icon={CreditCard} label="Cước bay" value={aud(batchFreight)} />
+              </div>
+              <div className="batch-stats">
+                <div><span>Order</span><strong>{batchOrders.length}</strong></div>
+                <div><span>Kg</span><strong>{batchWeight.toFixed(1)}/{batch.capacityKg}</strong></div>
+                <div><span>Full</span><strong>{fillRate}%</strong></div>
+              </div>
+              <div className="capacity-bar"><span style={{ width: `${fillRate}%` }} /></div>
+              <div className="batch-actions">
+                <span className="batch-action" onClick={() => updateBatchStatus(batch.id, "closed")}>Chốt đợt</span>
+                <span className="batch-action muted" onClick={() => updateBatchStatus(batch.id, "inTransit")}>Cho bay</span>
+                <span className="batch-action muted" onClick={() => updateBatchStatus(batch.id, "arrived")}>Đã về VN</span>
+              </div>
+              <div className="freight-order-list">
+                {batchOrders.map((order) => (
+                  <div className="mini-order-row" key={order.id}>
+                    <span>{order.id}</span>
+                    <strong>{order.product}</strong>
+                    <em>{order.weightKg.toFixed(1)}kg · {getAccount(order.purchaserId).displayName}</em>
+                  </div>
+                ))}
+              </div>
+            </article>
+          );
+        })}
+      </section>
+    </div>
+  );
+}
+
+function CashflowFocusView({ orders, batches, canSeeProfit, cashIn, cashOut, revenue, expectedMargin, receivableOrders }) {
+  return (
+    <div className="focused-view">
+      <section className="focus-hero">
+        <Metric label="Phải thu khách" value={vnd(revenue)} trend="Tổng giá bán theo đơn" icon={TrendingUp} />
+        <Metric label="Đã thu" value={vnd(cashIn)} trend="Cọc/tiền khách đã trả" icon={ShieldCheck} />
+        <Metric label="Đã chi" value={vnd(cashOut)} trend="Tiền hàng + ship + cước bay" icon={CreditCard} />
+        <Metric label={canSeeProfit ? "Lãi gộp" : "Lãi/lỗ"} value={canSeeProfit ? vnd(expectedMargin) : "Đã ẩn"} trend="Theo quyền tài khoản" icon={Sparkles} />
+      </section>
+
+      <section className="cashflow-layout">
+        <div className="orders-panel">
+          <div className="table-toolbar">
+            <div>
+              <span className="eyebrow">Ledger</span>
+              <h2>Sổ thu/chi theo order</h2>
+            </div>
+            <span className="rate-pill">{receivableOrders.length} đơn còn phải thu</span>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Mã đơn</th>
+                  <th>Khách</th>
+                  <th>Đã thu</th>
+                  <th>Còn phải thu</th>
+                  <th>Tiền chi</th>
+                  <th>Tỉ giá</th>
+                  <th>Chuyến</th>
+                  {canSeeProfit && <th>Lãi gộp</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((order) => (
+                  <tr key={order.id}>
+                    <td><strong>{order.id}</strong><span>{order.product}</span></td>
+                    <td>{order.customer}</td>
+                    <td><strong>{vnd(finance(order).cashInVnd)}</strong></td>
+                    <td><span className="money-due">{vnd(finance(order).outstandingVnd)}</span></td>
+                    <td>{vnd(finance(order).cashOutVnd)}</td>
+                    <td>{formatter.format(orderRate(order))}</td>
+                    <td>{batches.find((batch) => batch.id === order.batchId)?.code ?? "Chưa xếp"}</td>
+                    {canSeeProfit && <td><strong>{vnd(finance(order).grossProfitVnd)}</strong></td>}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <aside className="detail-panel">
+          <div className="detail-header">
+            <div>
+              <span className="eyebrow">Collection priority</span>
+              <h2>Cần thu trước</h2>
+            </div>
+            <WalletCards size={18} />
+          </div>
+          {receivableOrders.slice(0, 6).map((order) => (
+            <div className="process-card" key={order.id}>
+              <strong>{order.customer} · {vnd(finance(order).outstandingVnd)}</strong>
+              <p>{order.id} · {order.product} · ETA {order.eta}</p>
+            </div>
+          ))}
+        </aside>
+      </section>
+    </div>
+  );
+}
+
+function NotificationsFocusView({ tasks, orders, batches, receivableOrders, getBatch, getAccount }) {
+  const purchaseAlerts = orders.filter((order) => ["quote", "deposit", "purchased"].includes(order.status)).slice(0, 5);
+  const batchAlerts = batches.filter((batch) => batch.status === "open" || batch.status === "closed");
+
+  return (
+    <div className="focused-view">
+      <section className="notification-layout">
+        <div className="orders-panel">
+          <div className="table-toolbar">
+            <div>
+              <span className="eyebrow">Notification center</span>
+              <h2>Việc cần làm cho team AU/VN</h2>
+            </div>
+            <span className="rate-pill">{tasks.length + purchaseAlerts.length + receivableOrders.length} tín hiệu cần xem</span>
+          </div>
+          <div className="notification-grid">
+            {tasks.map((task) => (
+              <article className={`notification-card ${task.tone}`} key={task.title}>
+                <span>Việc hôm nay · {task.time}</span>
+                <strong>{task.title}</strong>
+                <p>Giao team cập nhật lại trạng thái trong app sau khi xử lý.</p>
+              </article>
+            ))}
+            {purchaseAlerts.map((order) => (
+              <article className="notification-card gold" key={order.id}>
+                <span>Mua hàng · {getBatch(order.batchId)?.cutoff ?? "Chưa có cutoff"}</span>
+                <strong>{order.customer} · {order.product}</strong>
+                <p>{getAccount(order.purchaserId).displayName} cần kiểm nguồn mua, bill, cân nặng và tracking. Trạng thái hiện tại: {statusLabel(order.status)}.</p>
+              </article>
+            ))}
+            {receivableOrders.slice(0, 5).map((order) => (
+              <article className="notification-card urgent" key={`${order.id}-due`}>
+                <span>Thu tiền · Còn phải thu</span>
+                <strong>{order.customer} · {vnd(finance(order).outstandingVnd)}</strong>
+                <p>Nhắc khách trước khi giao. Order {order.id}, ETA {order.eta}, staff {getAccount(order.assigneeId).displayName}.</p>
+              </article>
+            ))}
+          </div>
+        </div>
+
+        <aside className="detail-panel">
+          <div className="detail-header">
+            <div>
+              <span className="eyebrow">Shipment alerts</span>
+              <h2>Chuyến cần chú ý</h2>
+            </div>
+            <Bell size={18} />
+          </div>
+          {batchAlerts.map((batch) => (
+            <div className="process-card" key={batch.id}>
+              <strong>{batch.code} · {batchStatusLabel(batch.status)}</strong>
+              <p>Cutoff {batch.cutoff}, bay {batch.departure}, về VN {batch.eta}. Kiểm order chưa mua trước khi chốt.</p>
+            </div>
+          ))}
+          <div className="note-box">
+            <span>Chuẩn thông báo</span>
+            <p>Noti dùng để nhắc người phụ trách cập nhật trong app, không thay thế xác nhận tiền, bill hay giao hàng ngoài đời.</p>
+          </div>
+        </aside>
+      </section>
     </div>
   );
 }
