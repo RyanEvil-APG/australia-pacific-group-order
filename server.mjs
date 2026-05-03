@@ -50,7 +50,42 @@ const defaultState = {
   ],
   orders: [],
   batches: [],
-  inventory: []
+  inventory: [],
+  tasks: [
+    {
+      id: "task-dyson-quote",
+      title: "Chốt báo giá Dyson",
+      time: "17:45",
+      dueDate: "Hôm nay",
+      tone: "urgent",
+      status: "open",
+      assigneeId: "ryan",
+      linkedOrderId: "AU-260502-011",
+      detail: "Kiểm tra lại giá AUD, ship Úc, cước bay và còn phải thu trước khi báo khách."
+    },
+    {
+      id: "task-melbourne-cash",
+      title: "Kiểm tra thu/chi lô Melbourne",
+      time: "18:20",
+      dueDate: "Hôm nay",
+      tone: "gold",
+      status: "open",
+      assigneeId: "general-manager",
+      linkedOrderId: "batch-260508",
+      detail: "So lại tiền đã thu, còn phải thu và chi phí cước bay trước khi chốt lô."
+    },
+    {
+      id: "task-vip-bag-color",
+      title: "Nhắn khách VIP xác nhận màu túi",
+      time: "19:00",
+      dueDate: "Hôm nay",
+      tone: "green",
+      status: "open",
+      assigneeId: "staff-vn",
+      linkedOrderId: "AU-260502-009",
+      detail: "Xác nhận màu Black/Gold, note lại trong order sau khi khách phản hồi."
+    }
+  ]
 };
 
 const supabase =
@@ -76,7 +111,8 @@ function mergeState(state = {}) {
     accounts: Array.isArray(state.accounts) && state.accounts.length ? state.accounts : defaultState.accounts,
     orders: Array.isArray(state.orders) ? state.orders : [],
     batches: Array.isArray(state.batches) ? state.batches : [],
-    inventory: Array.isArray(state.inventory) ? state.inventory : []
+    inventory: Array.isArray(state.inventory) ? state.inventory : [],
+    tasks: Array.isArray(state.tasks) ? state.tasks : defaultState.tasks
   };
 }
 
@@ -163,7 +199,8 @@ function mergeClientState(serverState, clientState, account) {
     accounts: canManageUsers && Array.isArray(clientState.accounts) ? clientState.accounts : serverState.accounts,
     orders: Array.isArray(clientState.orders) ? clientState.orders : serverState.orders,
     batches: Array.isArray(clientState.batches) ? clientState.batches : serverState.batches,
-    inventory: Array.isArray(clientState.inventory) ? clientState.inventory : serverState.inventory
+    inventory: Array.isArray(clientState.inventory) ? clientState.inventory : serverState.inventory,
+    tasks: Array.isArray(clientState.tasks) ? clientState.tasks : serverState.tasks
   };
 }
 

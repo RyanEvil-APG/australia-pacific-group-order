@@ -316,10 +316,40 @@ const initialInventory = [
   }
 ];
 
-const tasks = [
-  { title: "Chốt báo giá Dyson", time: "17:45", tone: "urgent" },
-  { title: "Kiểm tra thu/chi lô Melbourne", time: "18:20", tone: "gold" },
-  { title: "Nhắn khách VIP xác nhận màu túi", time: "19:00", tone: "green" }
+const initialTasks = [
+  {
+    id: "task-dyson-quote",
+    title: "Chốt báo giá Dyson",
+    time: "17:45",
+    dueDate: "Hôm nay",
+    tone: "urgent",
+    status: "open",
+    assigneeId: "ryan",
+    linkedOrderId: "AU-260502-011",
+    detail: "Kiểm tra lại giá AUD, ship Úc, cước bay và còn phải thu trước khi báo khách."
+  },
+  {
+    id: "task-melbourne-cash",
+    title: "Kiểm tra thu/chi lô Melbourne",
+    time: "18:20",
+    dueDate: "Hôm nay",
+    tone: "gold",
+    status: "open",
+    assigneeId: "general-manager",
+    linkedOrderId: "batch-260508",
+    detail: "So lại tiền đã thu, còn phải thu và chi phí cước bay trước khi chốt lô."
+  },
+  {
+    id: "task-vip-bag-color",
+    title: "Nhắn khách VIP xác nhận màu túi",
+    time: "19:00",
+    dueDate: "Hôm nay",
+    tone: "green",
+    status: "open",
+    assigneeId: "staff-vn",
+    linkedOrderId: "AU-260502-009",
+    detail: "Xác nhận màu Black/Gold, note lại trong order sau khi khách phản hồi."
+  }
 ];
 
 const navItems = [
@@ -531,6 +561,7 @@ const storageKeys = {
   orders: "apg-order.orders",
   batches: "apg-order.batches",
   inventory: "apg-order.inventory",
+  tasks: "apg-order.tasks",
   currentAccountId: "apg-order.currentAccountId",
   sessionToken: "apg-order.sessionToken"
 };
@@ -596,12 +627,24 @@ function App() {
   const [orders, setOrders] = useStoredState(storageKeys.orders, initialOrders);
   const [batches, setBatches] = useStoredState(storageKeys.batches, initialBatches);
   const [inventory, setInventory] = useStoredState(storageKeys.inventory, initialInventory);
+  const [tasks, setTasks] = useStoredState(storageKeys.tasks, initialTasks, (stored) => mergeById(initialTasks, stored));
   const [selectedBatchId, setSelectedBatchId] = React.useState(initialBatches[0].id);
   const [activeStatus, setActiveStatus] = React.useState("all");
   const [query, setQuery] = React.useState("");
   const [selectedOrderId, setSelectedOrderId] = React.useState(initialOrders[0].id);
+  const [selectedTaskId, setSelectedTaskId] = React.useState(initialTasks[0].id);
   const [isCreateOpen, setIsCreateOpen] = React.useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const [isTaskOpen, setIsTaskOpen] = React.useState(false);
+  const [taskDraft, setTaskDraft] = React.useState({
+    title: "",
+    time: "",
+    dueDate: "Hôm nay",
+    tone: "gold",
+    assigneeId: "staff-vn",
+    linkedOrderId: "",
+    detail: ""
+  });
   const [userDraft, setUserDraft] = React.useState({
     username: "",
     password: "",
@@ -633,6 +676,7 @@ function App() {
   });
 
   const selectedOrder = orders.find((order) => order.id === selectedOrderId) ?? orders[0];
+  const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? tasks[0];
   const selectedBatch = batches.find((batch) => batch.id === selectedBatchId) ?? batches[0];
   const visibleOrders = orders.filter((order) => {
     const matchesStatus = activeStatus === "all" || order.status === activeStatus;
@@ -660,6 +704,7 @@ function App() {
   const isGeneralManager = activeAccount.role === "general_manager";
   const canSeeProfit = isAdmin || isGeneralManager;
   const canManageUsers = isAdmin;
+  const activeTasks = tasks.filter((task) => task.status !== "done");
   const activeViewMeta = navItems.find((item) => item.id === activeView) ?? navItems[0];
   const vipOrders = orders.filter((order) => order.priority === "VIP" || order.priority === "High");
   const readyStockOrders = orders.filter((order) => order.orderKind === "ready_stock");
@@ -681,6 +726,7 @@ function App() {
     if (Array.isArray(serverState.orders) && serverState.orders.length) setOrders(serverState.orders);
     if (Array.isArray(serverState.batches) && serverState.batches.length) setBatches(serverState.batches);
     if (Array.isArray(serverState.inventory) && serverState.inventory.length) setInventory(serverState.inventory);
+    if (Array.isArray(serverState.tasks)) setTasks(serverState.tasks);
   }
 
   React.useEffect(() => {
@@ -734,7 +780,7 @@ function App() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${sessionToken}`
         },
-        body: JSON.stringify({ state: { accounts, orders, batches, inventory } })
+        body: JSON.stringify({ state: { accounts, orders, batches, inventory, tasks } })
       })
         .then((response) => {
           if (response.status === 401) {
@@ -754,7 +800,7 @@ function App() {
     }, 450);
 
     return () => window.clearTimeout(timeout);
-  }, [sessionToken, currentAccountId, accounts, orders, batches, inventory, setCurrentAccountId, setSessionToken]);
+  }, [sessionToken, currentAccountId, accounts, orders, batches, inventory, tasks, setCurrentAccountId, setSessionToken]);
 
   async function handleLogin(event) {
     event.preventDefault();
@@ -920,6 +966,86 @@ function App() {
 
   function updateSelectedOrderNote(value) {
     setOrders((current) => updateOrderField(current, selectedOrder.id, "note", value));
+  }
+
+  function openTask(taskId) {
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task) return;
+
+    setSelectedTaskId(task.id);
+    setTaskDraft({
+      title: task.title,
+      time: task.time,
+      dueDate: task.dueDate,
+      tone: task.tone,
+      assigneeId: task.assigneeId,
+      linkedOrderId: task.linkedOrderId ?? "",
+      detail: task.detail ?? ""
+    });
+    setIsTaskOpen(true);
+  }
+
+  function openNewTask() {
+    setSelectedTaskId(null);
+    setTaskDraft({
+      title: "",
+      time: "",
+      dueDate: "Hôm nay",
+      tone: "gold",
+      assigneeId: activeAccount.role === "staff" ? activeAccount.id : "staff-vn",
+      linkedOrderId: selectedOrder?.id ?? "",
+      detail: ""
+    });
+    setIsTaskOpen(true);
+  }
+
+  function saveTask(event) {
+    event.preventDefault();
+    const title = taskDraft.title.trim();
+    if (!title) return;
+
+    if (selectedTaskId) {
+      setTasks((current) =>
+        current.map((task) =>
+          task.id === selectedTaskId
+            ? {
+                ...task,
+                ...taskDraft,
+                title
+              }
+            : task
+        )
+      );
+    } else {
+      const nextTask = {
+        id: `task-${Date.now().toString(36)}`,
+        ...taskDraft,
+        title,
+        status: "open"
+      };
+      setTasks((current) => [nextTask, ...current]);
+      setSelectedTaskId(nextTask.id);
+    }
+
+    setIsTaskOpen(false);
+  }
+
+  function toggleTaskDone(taskId) {
+    setTasks((current) =>
+      current.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              status: task.status === "done" ? "open" : "done"
+            }
+          : task
+      )
+    );
+  }
+
+  function deleteTask(taskId) {
+    setTasks((current) => current.filter((task) => task.id !== taskId));
+    setIsTaskOpen(false);
   }
 
   function getBatch(orderBatchId) {
@@ -1145,20 +1271,35 @@ function App() {
 
           <div className="priority-panel">
             <div className="panel-head compact">
-              <h2>Việc cần xử lý</h2>
-              <CalendarDays size={18} />
+              <div>
+                <h2>Việc cần xử lý</h2>
+                <span>{activeTasks.length} việc đang mở</span>
+              </div>
+              <button className="mini-icon-button" type="button" onClick={openNewTask} aria-label="Thêm việc">
+                <Plus size={17} />
+              </button>
             </div>
             <div className="task-list">
-              {tasks.map((task) => (
-                <div className="task-row" key={task.title}>
+              {activeTasks.slice(0, 5).map((task) => (
+                <button className="task-row" key={task.id} type="button" onClick={() => openTask(task.id)}>
                   <span className={`task-dot ${task.tone}`} />
                   <div>
                     <strong>{task.title}</strong>
-                    <p>{task.time}</p>
+                    <p>{task.dueDate} · {task.time} · {getAccount(task.assigneeId).displayName}</p>
                   </div>
                   <ArrowUpRight size={16} />
-                </div>
+                </button>
               ))}
+              {!activeTasks.length && (
+                <button className="task-row empty-task" type="button" onClick={openNewTask}>
+                  <span className="task-dot green" />
+                  <div>
+                    <strong>Chưa có việc đang mở</strong>
+                    <p>Bấm để tạo việc cho team.</p>
+                  </div>
+                  <Plus size={16} />
+                </button>
+              )}
             </div>
           </div>
         </section>
@@ -1866,6 +2007,9 @@ function App() {
             receivableOrders={receivableOrders}
             getBatch={getBatch}
             getAccount={getAccount}
+            openTask={openTask}
+            openNewTask={openNewTask}
+            toggleTaskDone={toggleTaskDone}
           />
         )}
       </main>
@@ -2077,6 +2221,106 @@ function App() {
               </aside>
             </div>
           </div>
+        </div>
+      )}
+
+      {isTaskOpen && (
+        <div className="modal-backdrop" role="presentation">
+          <form className="order-modal task-modal" onSubmit={saveTask}>
+            <div className="modal-head">
+              <div>
+                <span className="eyebrow">Task board</span>
+                <h2>{selectedTaskId ? "Sửa việc cần xử lý" : "Thêm việc cần xử lý"}</h2>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setIsTaskOpen(false)} aria-label="Đóng">
+                ×
+              </button>
+            </div>
+
+            <div className="task-modal-grid">
+              <label className="wide">
+                Tiêu đề việc
+                <input
+                  value={taskDraft.title}
+                  onChange={(event) => setTaskDraft({ ...taskDraft, title: event.target.value })}
+                  placeholder="Ví dụ: Nhắc khách chuyển khoản còn lại"
+                />
+              </label>
+              <label>
+                Ngày hạn
+                <input
+                  value={taskDraft.dueDate}
+                  onChange={(event) => setTaskDraft({ ...taskDraft, dueDate: event.target.value })}
+                  placeholder="Hôm nay / 08/05"
+                />
+              </label>
+              <label>
+                Giờ hạn
+                <input
+                  value={taskDraft.time}
+                  onChange={(event) => setTaskDraft({ ...taskDraft, time: event.target.value })}
+                  placeholder="17:30"
+                />
+              </label>
+              <label>
+                Mức ưu tiên
+                <select value={taskDraft.tone} onChange={(event) => setTaskDraft({ ...taskDraft, tone: event.target.value })}>
+                  <option value="urgent">Gấp</option>
+                  <option value="gold">Quan trọng</option>
+                  <option value="green">Bình thường</option>
+                </select>
+              </label>
+              <label>
+                Gán cho
+                <select
+                  value={taskDraft.assigneeId}
+                  onChange={(event) => setTaskDraft({ ...taskDraft, assigneeId: event.target.value })}
+                >
+                  {accounts
+                    .filter((account) => account.active)
+                    .map((account) => (
+                      <option value={account.id} key={account.id}>
+                        {account.displayName} - {account.label}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="wide">
+                Liên kết order/chuyến
+                <input
+                  value={taskDraft.linkedOrderId}
+                  onChange={(event) => setTaskDraft({ ...taskDraft, linkedOrderId: event.target.value })}
+                  placeholder="AU-... hoặc DOT-..."
+                />
+              </label>
+              <label className="wide">
+                Ghi chú xử lý
+                <textarea
+                  value={taskDraft.detail}
+                  onChange={(event) => setTaskDraft({ ...taskDraft, detail: event.target.value })}
+                  placeholder="Ghi rõ cần làm gì, cần check bill/tiền/cutoff nào..."
+                />
+              </label>
+            </div>
+
+            <div className="task-modal-actions">
+              {selectedTaskId && selectedTask && (
+                <>
+                  <button className="ghost-button" type="button" onClick={() => toggleTaskDone(selectedTask.id)}>
+                    <CheckCircle2 size={17} />
+                    {selectedTask.status === "done" ? "Mở lại" : "Đánh dấu xong"}
+                  </button>
+                  <button className="danger-button" type="button" onClick={() => deleteTask(selectedTask.id)}>
+                    Xóa việc
+                  </button>
+                </>
+              )}
+              <button className="primary-button" type="submit">
+                <Plus size={17} />
+                Lưu việc
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
@@ -2732,9 +2976,10 @@ function CashflowFocusView({ orders, batches, canSeeProfit, cashIn, cashOut, rev
   );
 }
 
-function NotificationsFocusView({ tasks, orders, batches, receivableOrders, getBatch, getAccount }) {
+function NotificationsFocusView({ tasks, orders, batches, receivableOrders, getBatch, getAccount, openTask, openNewTask, toggleTaskDone }) {
   const purchaseAlerts = orders.filter((order) => ["quote", "deposit", "purchased"].includes(order.status)).slice(0, 5);
   const batchAlerts = batches.filter((batch) => batch.status === "open" || batch.status === "closed");
+  const openTasks = tasks.filter((task) => task.status !== "done");
 
   return (
     <div className="focused-view">
@@ -2745,14 +2990,28 @@ function NotificationsFocusView({ tasks, orders, batches, receivableOrders, getB
               <span className="eyebrow">Notification center</span>
               <h2>Việc cần làm cho team AU/VN</h2>
             </div>
-            <span className="rate-pill">{tasks.length + purchaseAlerts.length + receivableOrders.length} tín hiệu cần xem</span>
+            <button className="primary-button" type="button" onClick={openNewTask}>
+              <Plus size={17} />
+              Thêm việc
+            </button>
+          </div>
+          <div className="task-management-strip">
+            <span>{openTasks.length} việc đang mở</span>
+            <span>{tasks.filter((task) => task.status === "done").length} việc đã xong</span>
+            <span>{purchaseAlerts.length + receivableOrders.length} cảnh báo hệ thống</span>
           </div>
           <div className="notification-grid">
             {tasks.map((task) => (
-              <article className={`notification-card ${task.tone}`} key={task.title}>
-                <span>Việc hôm nay · {task.time}</span>
+              <article className={`notification-card ${task.tone} ${task.status === "done" ? "done-task-card" : ""}`} key={task.id}>
+                <span>{task.dueDate} · {task.time} · {getAccount(task.assigneeId).displayName}</span>
                 <strong>{task.title}</strong>
-                <p>Giao team cập nhật lại trạng thái trong app sau khi xử lý.</p>
+                <p>{task.detail || "Giao team cập nhật lại trạng thái trong app sau khi xử lý."}</p>
+                <div className="task-card-actions">
+                  <button type="button" onClick={() => openTask(task.id)}>Sửa</button>
+                  <button type="button" onClick={() => toggleTaskDone(task.id)}>
+                    {task.status === "done" ? "Mở lại" : "Xong"}
+                  </button>
+                </div>
               </article>
             ))}
             {purchaseAlerts.map((order) => (

@@ -402,6 +402,18 @@ h2 {
   background: #fffaf2;
 }
 
+.mini-icon-button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  color: #fffaf0;
+  background: #21231f;
+  border: 0;
+  border-radius: 8px;
+}
+
 .icon-button.active {
   color: #fffaf0;
   background: #21231f;
@@ -549,11 +561,14 @@ h2 {
 
 .task-row {
   gap: 10px;
+  width: 100%;
   min-height: 62px;
   padding: 10px;
   background: #fff;
   border: 1px solid rgba(33, 29, 23, 0.08);
   border-radius: 8px;
+  color: inherit;
+  text-align: left;
 }
 
 .task-row div {
@@ -571,6 +586,11 @@ h2 {
   margin-top: 4px;
   color: #7e7569;
   font-size: 0.78rem;
+}
+
+.task-row.empty-task {
+  background: #f4faf5;
+  border-style: dashed;
 }
 
 .task-dot {
@@ -1319,6 +1339,56 @@ h2 {
   color: #201d18;
 }
 
+.done-task-card {
+  opacity: 0.68;
+}
+
+.done-task-card strong {
+  text-decoration: line-through;
+}
+
+.task-management-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+
+.task-management-strip span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  color: #554d42;
+  background: #f7f2e9;
+  border: 1px solid rgba(33, 29, 23, 0.08);
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.task-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.task-card-actions button {
+  min-height: 32px;
+  padding: 0 10px;
+  color: #2b271f;
+  background: #f7f2e9;
+  border: 1px solid rgba(33, 29, 23, 0.1);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.task-card-actions button:last-child {
+  color: #fffaf0;
+  background: #21231f;
+}
+
 .inventory-card {
   display: grid;
   gap: 12px;
@@ -1982,6 +2052,56 @@ tbody tr:hover,
   overflow: hidden;
 }
 
+.task-modal {
+  width: min(760px, 100%);
+}
+
+.task-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.task-modal-grid label {
+  display: grid;
+  gap: 7px;
+  color: #5e554a;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.task-modal-grid label.wide {
+  grid-column: 1 / -1;
+}
+
+.task-modal-grid input,
+.task-modal-grid select,
+.task-modal-grid textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 11px;
+  color: #27231d;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.12);
+  border-radius: 8px;
+  outline: 0;
+}
+
+.task-modal-grid textarea {
+  min-height: 110px;
+  padding: 10px 11px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.task-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
 .user-settings-modal .modal-head {
   position: sticky;
   top: 0;
@@ -2329,7 +2449,8 @@ tbody tr:hover,
   }
 
   .cashflow-card,
-  .finance-editor {
+  .finance-editor,
+  .task-modal-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2425,6 +2546,16 @@ tbody tr:hover,
 
   .top-actions .primary-button {
     min-width: 100%;
+  }
+
+  .task-modal-actions {
+    display: grid;
+  }
+
+  .task-modal-actions .primary-button,
+  .task-modal-actions .ghost-button,
+  .task-modal-actions .danger-button {
+    width: 100%;
   }
 
   .month-planner-section,
