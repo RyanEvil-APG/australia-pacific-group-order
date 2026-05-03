@@ -34,7 +34,7 @@ const initialAccounts = [
   {
     id: "ryan",
     username: "ryan",
-    password: "ryan123",
+    password: "__server_login_only__",
     displayName: "Ryan",
     role: "admin",
     label: "Admin",
@@ -45,7 +45,7 @@ const initialAccounts = [
   {
     id: "general-manager",
     username: "manager",
-    password: "manager123",
+    password: "__server_login_only__",
     displayName: "General Manager",
     role: "general_manager",
     label: "General Manager",
@@ -56,7 +56,7 @@ const initialAccounts = [
   {
     id: "staff-vn",
     username: "staff.vn",
-    password: "staff123",
+    password: "__server_login_only__",
     displayName: "VN Ops",
     role: "staff",
     label: "Staff",
@@ -590,7 +590,7 @@ function App() {
   const [currentAccountId, setCurrentAccountId] = useStoredState(storageKeys.currentAccountId, null);
   const [sessionToken, setSessionToken] = useStoredState(storageKeys.sessionToken, null);
   const [activeView, setActiveView] = React.useState("overview");
-  const [loginForm, setLoginForm] = React.useState({ username: "ryan", password: "ryan123" });
+  const [loginForm, setLoginForm] = React.useState({ username: "", password: "" });
   const [loginError, setLoginError] = React.useState("");
   const [syncStatus, setSyncStatus] = React.useState("local");
   const [orders, setOrders] = useStoredState(storageKeys.orders, initialOrders);
@@ -1040,11 +1040,6 @@ function App() {
             <LockKeyhole size={17} />
             Đăng nhập
           </button>
-          <div className="demo-credentials">
-            <span>Admin: ryan / ryan123</span>
-            <span>General Manager: manager / manager123</span>
-            <span>Staff: staff.vn / staff123</span>
-          </div>
         </form>
       </div>
     );

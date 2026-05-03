@@ -90,17 +90,6 @@ button {
   font-weight: 900;
 }
 
-.demo-credentials {
-  display: grid;
-  gap: 4px;
-  padding: 10px;
-  color: #746c61;
-  background: #f7f2e9;
-  border-radius: 8px;
-  font-size: 0.8rem;
-  font-weight: 800;
-}
-
 .sidebar {
   display: flex;
   flex-direction: column;
