@@ -1888,137 +1888,194 @@ function App() {
               </button>
             </div>
 
-            <div className="user-list">
-              {accounts.map((account) => (
-                <div className="user-row" key={account.id}>
-                  <AccountAvatar account={account} />
-                  <label>
-                    Username
-                    <input
-                      value={account.username}
-                      disabled={account.id === "ryan"}
-                      onChange={(event) => updateAccount(account.id, "username", event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Tên hiển thị
-                    <input
-                      value={account.displayName}
-                      onChange={(event) => updateAccount(account.id, "displayName", event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Password
-                    <input
-                      value={account.password}
-                      onChange={(event) => updateAccount(account.id, "password", event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Role
-                    <select value={account.role} onChange={(event) => updateAccount(account.id, "role", event.target.value)}>
-                      <option value="admin">Admin</option>
-                      <option value="general_manager">General Manager</option>
-                      <option value="staff">Staff</option>
-                    </select>
-                  </label>
-                  <label>
-                    Icon
-                    <input
-                      value={account.initials}
-                      maxLength={3}
-                      onChange={(event) => updateAccount(account.id, "initials", event.target.value.toUpperCase())}
-                    />
-                  </label>
-                  <label>
-                    Màu
-                    <input
-                      type="color"
-                      value={account.color}
-                      onChange={(event) => updateAccount(account.id, "color", event.target.value)}
-                    />
-                  </label>
-                  <label className="active-toggle">
-                    <input
-                      type="checkbox"
-                      checked={account.active}
-                      disabled={account.id === "ryan"}
-                      onChange={(event) => updateAccount(account.id, "active", event.target.checked)}
-                    />
-                    Active
-                  </label>
-                  <button
-                    className="danger-button"
-                    type="button"
-                    disabled={account.id === "ryan" || account.id === currentAccountId}
-                    onClick={() => removeAccount(account.id)}
-                  >
-                    Xóa
-                  </button>
-                </div>
-              ))}
+            <div className="settings-summary-grid">
+              <div>
+                <span>Active users</span>
+                <strong>{accounts.filter((account) => account.active).length}/{accounts.length}</strong>
+              </div>
+              <div>
+                <span>Admin</span>
+                <strong>{accounts.filter((account) => account.role === "admin").length}</strong>
+              </div>
+              <div>
+                <span>General Manager</span>
+                <strong>{accounts.filter((account) => account.role === "general_manager").length}</strong>
+              </div>
+              <div>
+                <span>Staff</span>
+                <strong>{accounts.filter((account) => account.role === "staff").length}</strong>
+              </div>
             </div>
 
-            <form className="add-user-form" onSubmit={handleCreateUser}>
-              <h3>Thêm user mới</h3>
-              <div className="form-grid">
-                <label>
-                  Username
-                  <input
-                    value={userDraft.username}
-                    onChange={(event) => setUserDraft({ ...userDraft, username: event.target.value })}
-                    placeholder="staff.hn"
-                  />
-                </label>
-                <label>
-                  Password
-                  <input
-                    value={userDraft.password}
-                    onChange={(event) => setUserDraft({ ...userDraft, password: event.target.value })}
-                    placeholder="Mật khẩu"
-                  />
-                </label>
-                <label>
-                  Tên hiển thị
-                  <input
-                    value={userDraft.displayName}
-                    onChange={(event) => setUserDraft({ ...userDraft, displayName: event.target.value })}
-                    placeholder="Hà Nội Ops"
-                  />
-                </label>
-                <label>
-                  Role
-                  <select value={userDraft.role} onChange={(event) => setUserDraft({ ...userDraft, role: event.target.value })}>
-                    <option value="staff">Staff</option>
-                    <option value="general_manager">General Manager</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </label>
-                <label>
-                  Icon
-                  <input
-                    value={userDraft.initials}
-                    maxLength={3}
-                    onChange={(event) => setUserDraft({ ...userDraft, initials: event.target.value.toUpperCase() })}
-                    placeholder="HN"
-                  />
-                </label>
-                <label>
-                  Màu icon
-                  <input
-                    type="color"
-                    value={userDraft.color}
-                    onChange={(event) => setUserDraft({ ...userDraft, color: event.target.value })}
-                  />
-                </label>
-              </div>
-              <div className="modal-actions">
-                <button className="primary-button" type="submit">
-                  <Plus size={17} />
-                  Thêm user
-                </button>
-              </div>
-            </form>
+            <div className="settings-layout">
+              <section className="user-list">
+                {accounts.map((account) => (
+                  <article className={account.active ? "user-row" : "user-row disabled-user"} key={account.id}>
+                    <div className="user-card-head">
+                      <div className="user-identity">
+                        <AccountAvatar account={account} />
+                        <div>
+                          <strong>{account.displayName}</strong>
+                          <span>@{account.username} · {account.label}</span>
+                        </div>
+                      </div>
+                      <label className="active-toggle">
+                        <input
+                          type="checkbox"
+                          checked={account.active}
+                          disabled={account.id === "ryan"}
+                          onChange={(event) => updateAccount(account.id, "active", event.target.checked)}
+                        />
+                        Active
+                      </label>
+                    </div>
+
+                    <div className="user-fields-grid">
+                      <label>
+                        Username
+                        <input
+                          value={account.username}
+                          disabled={account.id === "ryan"}
+                          onChange={(event) => updateAccount(account.id, "username", event.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Tên hiển thị
+                        <input
+                          value={account.displayName}
+                          onChange={(event) => updateAccount(account.id, "displayName", event.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Password
+                        <input
+                          value={account.password}
+                          onChange={(event) => updateAccount(account.id, "password", event.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Role
+                        <select value={account.role} onChange={(event) => updateAccount(account.id, "role", event.target.value)}>
+                          <option value="admin">Admin</option>
+                          <option value="general_manager">General Manager</option>
+                          <option value="staff">Staff</option>
+                        </select>
+                      </label>
+                      <label>
+                        Icon
+                        <input
+                          value={account.initials}
+                          maxLength={3}
+                          onChange={(event) => updateAccount(account.id, "initials", event.target.value.toUpperCase())}
+                        />
+                      </label>
+                      <label>
+                        Màu icon
+                        <input
+                          type="color"
+                          value={account.color}
+                          onChange={(event) => updateAccount(account.id, "color", event.target.value)}
+                        />
+                      </label>
+                    </div>
+
+                    <div className="user-card-footer">
+                      <span>{account.id === "ryan" ? "Owner account được khóa để tránh mất quyền quản trị." : roleLabel(account.role)}</span>
+                      <button
+                        className="danger-button"
+                        type="button"
+                        disabled={account.id === "ryan" || account.id === currentAccountId}
+                        onClick={() => removeAccount(account.id)}
+                      >
+                        Xóa user
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </section>
+
+              <aside className="settings-side-panel">
+                <form className="add-user-form" onSubmit={handleCreateUser}>
+                  <div>
+                    <span className="eyebrow">New user</span>
+                    <h3>Thêm tài khoản vận hành</h3>
+                  </div>
+                  <div className="add-user-grid">
+                    <label>
+                      Username
+                      <input
+                        value={userDraft.username}
+                        onChange={(event) => setUserDraft({ ...userDraft, username: event.target.value })}
+                        placeholder="staff.hn"
+                      />
+                    </label>
+                    <label>
+                      Password
+                      <input
+                        value={userDraft.password}
+                        onChange={(event) => setUserDraft({ ...userDraft, password: event.target.value })}
+                        placeholder="Mật khẩu"
+                      />
+                    </label>
+                    <label>
+                      Tên hiển thị
+                      <input
+                        value={userDraft.displayName}
+                        onChange={(event) => setUserDraft({ ...userDraft, displayName: event.target.value })}
+                        placeholder="Hà Nội Ops"
+                      />
+                    </label>
+                    <label>
+                      Role
+                      <select value={userDraft.role} onChange={(event) => setUserDraft({ ...userDraft, role: event.target.value })}>
+                        <option value="staff">Staff</option>
+                        <option value="general_manager">General Manager</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </label>
+                    <label>
+                      Icon
+                      <input
+                        value={userDraft.initials}
+                        maxLength={3}
+                        onChange={(event) => setUserDraft({ ...userDraft, initials: event.target.value.toUpperCase() })}
+                        placeholder="HN"
+                      />
+                    </label>
+                    <label>
+                      Màu icon
+                      <input
+                        type="color"
+                        value={userDraft.color}
+                        onChange={(event) => setUserDraft({ ...userDraft, color: event.target.value })}
+                      />
+                    </label>
+                  </div>
+                  <button className="primary-button" type="submit">
+                    <Plus size={17} />
+                    Thêm user
+                  </button>
+                </form>
+
+                <div className="role-guide">
+                  <div>
+                    <ShieldCheck size={17} />
+                    <strong>Admin</strong>
+                    <span>Toàn quyền, quản lý user và xem lãi/lỗ.</span>
+                  </div>
+                  <div>
+                    <Gem size={17} />
+                    <strong>General Manager</strong>
+                    <span>Xem vận hành và lãi/lỗ, không chỉnh user.</span>
+                  </div>
+                  <div>
+                    <UserRound size={17} />
+                    <strong>Staff</strong>
+                    <span>Xử lý đơn, chi phí, timeline; ẩn lãi/lỗ.</span>
+                  </div>
+                </div>
+              </aside>
+            </div>
           </div>
         </div>
       )}
