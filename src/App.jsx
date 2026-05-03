@@ -429,6 +429,88 @@ function nearestOpenBatchId(batches) {
   return batches.find((batch) => batch.status === "open")?.id ?? batches[0]?.id;
 }
 
+function startOfDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function dateKey(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function parseShortDate(value, baseDate = new Date()) {
+  const match = String(value || "").match(/(\d{1,2})\/(\d{1,2})/);
+  if (!match) return null;
+
+  const day = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const date = new Date(baseDate.getFullYear(), month, day);
+
+  if (date < addDays(startOfDay(baseDate), -20)) {
+    date.setFullYear(date.getFullYear() + 1);
+  }
+
+  return date;
+}
+
+function shortDateLabel(date) {
+  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function weekdayLabel(date) {
+  return new Intl.DateTimeFormat("vi-VN", { weekday: "short" }).format(date);
+}
+
+function buildMonthTimeline(batches, orders) {
+  const today = startOfDay(new Date());
+  const days = Array.from({ length: 30 }, (_, index) => {
+    const date = addDays(today, index);
+    return {
+      date,
+      key: dateKey(date),
+      label: shortDateLabel(date),
+      weekday: weekdayLabel(date),
+      events: []
+    };
+  });
+  const dayMap = new Map(days.map((day) => [day.key, day]));
+
+  batches.forEach((batch) => {
+    const batchOrders = orders.filter((order) => order.batchId === batch.id);
+    const weightKg = batchOrders.reduce((sum, order) => sum + money(order.weightKg), 0);
+    const valueVnd = batchOrders.reduce((sum, order) => sum + finance(order).customerTotalVnd, 0);
+    const vipCount = batchOrders.filter((order) => order.priority === "VIP" || order.priority === "High").length;
+    const milestones = [
+      { type: "cutoff", label: "Chốt mua", value: batch.cutoff },
+      { type: "fly", label: "Bay", value: batch.departure },
+      { type: "arrive", label: "Về VN", value: batch.eta }
+    ];
+
+    milestones.forEach((milestone) => {
+      const date = parseShortDate(milestone.value, today);
+      const day = date ? dayMap.get(dateKey(date)) : null;
+      if (!day) return;
+
+      day.events.push({
+        ...milestone,
+        batch,
+        orders: batchOrders,
+        orderCount: batchOrders.length,
+        weightKg,
+        valueVnd,
+        vipCount
+      });
+    });
+  });
+
+  return days;
+}
+
 function shipmentTimeline(batch) {
   if (!batch) {
     return [];
@@ -586,6 +668,12 @@ function App() {
   const freightTotalVnd = orders.reduce((sum, order) => sum + money(order.intlShippingAud) * orderRate(order), 0);
   const stockAvailable = inventory.reduce((sum, item) => sum + Math.max(item.onHand - item.reserved, 0), 0);
   const stockRetailValue = inventory.reduce((sum, item) => sum + Math.max(item.onHand - item.reserved, 0) * money(item.sellVnd), 0);
+  const monthTimeline = buildMonthTimeline(batches, orders);
+  const upcomingMilestones = monthTimeline
+    .flatMap((day) => day.events.map((event) => ({ ...event, day })))
+    .sort((left, right) => left.day.date - right.day.date);
+  const upcomingArrivals = upcomingMilestones.filter((event) => event.type === "arrive").slice(0, 5);
+  const upcomingCutoffs = upcomingMilestones.filter((event) => event.type === "cutoff").slice(0, 5);
 
   function applyServerState(serverState) {
     if (!serverState) return;
@@ -1076,6 +1164,97 @@ function App() {
                   <ArrowUpRight size={16} />
                 </div>
               ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="month-planner-section">
+          <div className="timeline-board-head">
+            <div>
+              <span className="eyebrow">30-day shipment calendar</span>
+              <h2>Timeline hàng sắp chốt, bay và về VN</h2>
+            </div>
+            <div className="timeline-legend">
+              <span><i className="legend-dot cutoff" /> Chốt mua</span>
+              <span><i className="legend-dot fly" /> Bay</span>
+              <span><i className="legend-dot arrive" /> Về VN</span>
+            </div>
+          </div>
+
+          <div className="month-timeline-scroll" aria-label="Timeline 30 ngày">
+            <div className="month-timeline-grid">
+              {monthTimeline.map((day, index) => {
+                const eventTypes = new Set(day.events.map((event) => event.type));
+                return (
+                  <div className={index === 0 ? "month-day today" : "month-day"} key={day.key}>
+                    <div className="month-day-head">
+                      <span>{day.weekday}</span>
+                      <strong>{day.label}</strong>
+                    </div>
+                    <div className="month-event-dots">
+                      {["cutoff", "fly", "arrive"].map((type) => (
+                        <span className={eventTypes.has(type) ? `month-dot ${type} active` : `month-dot ${type}`} key={type} />
+                      ))}
+                    </div>
+                    <div className="month-event-list">
+                      {day.events.slice(0, 2).map((event) => (
+                        <div className={`month-event ${event.type}`} key={`${event.batch.id}-${event.type}`}>
+                          <span>{event.label}</span>
+                          <strong>{event.batch.code}</strong>
+                          <em>{event.orderCount} đơn · {event.weightKg.toFixed(1)}kg</em>
+                        </div>
+                      ))}
+                      {day.events.length > 2 && <p>+{day.events.length - 2} mốc nữa</p>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="arrival-action-grid">
+            <div className="arrival-panel">
+              <div className="panel-head compact">
+                <div>
+                  <span className="eyebrow">Incoming stock</span>
+                  <h2>Sắp về VN</h2>
+                </div>
+                <PackageCheck size={18} />
+              </div>
+              <div className="arrival-list">
+                {upcomingArrivals.map((event) => (
+                  <div className="arrival-row" key={`${event.batch.id}-${event.type}`}>
+                    <div>
+                      <strong>{event.day.label} · {event.batch.code}</strong>
+                      <span>{event.batch.route}</span>
+                    </div>
+                    <em>{event.orderCount} đơn · {event.weightKg.toFixed(1)}kg</em>
+                    <p>{vnd(event.valueVnd)} · {event.vipCount} VIP/High</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="arrival-panel">
+              <div className="panel-head compact">
+                <div>
+                  <span className="eyebrow">Buying deadline</span>
+                  <h2>Cần mua trước cutoff</h2>
+                </div>
+                <Clock3 size={18} />
+              </div>
+              <div className="arrival-list">
+                {upcomingCutoffs.map((event) => (
+                  <div className="arrival-row deadline" key={`${event.batch.id}-${event.type}`}>
+                    <div>
+                      <strong>{event.day.label} · {event.batch.code}</strong>
+                      <span>{event.batch.note}</span>
+                    </div>
+                    <em>{event.orders.filter((order) => ["quote", "deposit", "purchased"].includes(order.status)).length} đơn cần kiểm</em>
+                    <p>Bay {event.batch.departure} · ETA {event.batch.eta}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </section>
