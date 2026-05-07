@@ -91,6 +91,22 @@ function normalizeOrders(items) {
   return Array.isArray(items) ? items.map((order) => ({ ...order, status: normalizeOrderStatus(order?.status) })) : [];
 }
 
+function normalizeCustomerTier(tier) {
+  const legacyMap = {
+    VIP: "Vip",
+    VIP1: "Vip1",
+    VIP2: "Vip2",
+    VIP3: "Vip3"
+  };
+  const allowedTiers = new Set(["Customer", "Vip", "Vip1", "Vip2", "Vip3"]);
+  const nextTier = legacyMap[tier] ?? tier;
+  return allowedTiers.has(nextTier) ? nextTier : "Customer";
+}
+
+function normalizeCustomers(items) {
+  return Array.isArray(items) ? items.map((customer) => ({ ...customer, tier: normalizeCustomerTier(customer?.tier) })) : [];
+}
+
 function mergeState(state = {}) {
   const demoOrderIds = new Set(["AU-260503-014", "AU-260503-013", "AU-260502-011", "AU-260502-009", "AU-260501-006", "AU-260430-003"]);
   const demoBatchIds = new Set(["batch-260508", "batch-260512", "batch-260515"]);
@@ -100,7 +116,7 @@ function mergeState(state = {}) {
   return {
     accounts: Array.isArray(state.accounts) && state.accounts.length ? state.accounts : defaultState.accounts,
     orders: normalizeOrders(Array.isArray(state.orders) ? state.orders.filter((order) => !demoOrderIds.has(order.id)) : []),
-    customers: Array.isArray(state.customers) ? state.customers : [],
+    customers: normalizeCustomers(state.customers),
     batches: Array.isArray(state.batches) ? state.batches.filter((batch) => !demoBatchIds.has(batch.id)) : [],
     inventory: Array.isArray(state.inventory) ? state.inventory.filter((item) => !demoStockSkus.has(item.sku)) : [],
     transactions: Array.isArray(state.transactions) ? state.transactions : [],
@@ -190,7 +206,7 @@ function mergeClientState(serverState, clientState, account) {
   return {
     accounts: canManageUsers && Array.isArray(clientState.accounts) ? clientState.accounts : serverState.accounts,
     orders: Array.isArray(clientState.orders) ? normalizeOrders(clientState.orders) : serverState.orders,
-    customers: Array.isArray(clientState.customers) ? clientState.customers : serverState.customers,
+    customers: Array.isArray(clientState.customers) ? normalizeCustomers(clientState.customers) : serverState.customers,
     batches: Array.isArray(clientState.batches) ? clientState.batches : serverState.batches,
     inventory: Array.isArray(clientState.inventory) ? clientState.inventory : serverState.inventory,
     transactions: Array.isArray(clientState.transactions) ? clientState.transactions : serverState.transactions,

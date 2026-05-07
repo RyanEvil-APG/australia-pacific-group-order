@@ -693,13 +693,34 @@ tbody tr:hover {
 
 .batch-stats span,
 .batch-cashline span,
-.auto-summary span {
+.auto-summary span,
+.flight-link-hint span {
   display: block;
   margin-bottom: 7px;
   color: #81786b;
   font-size: 0.72rem;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.flight-link-hint {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  background: #f8f3ea;
+  border: 1px solid rgba(33, 29, 23, 0.08);
+  border-radius: 8px;
+}
+
+.flight-link-hint strong {
+  color: #211d17;
+}
+
+.flight-link-hint em {
+  color: #756c60;
+  font-size: 0.8rem;
+  font-style: normal;
+  font-weight: 850;
 }
 
 .batch-actions button {

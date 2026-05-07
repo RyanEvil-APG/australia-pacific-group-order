@@ -165,7 +165,7 @@ const batchStatuses = [
   { id: "arrived", label: "Đã về VN" }
 ];
 
-const customerTiers = ["Customer", "VIP", "VIP1", "VIP2", "VIP3"];
+const customerTiers = ["Customer", "Vip", "Vip1", "Vip2", "Vip3"];
 const formatter = new Intl.NumberFormat("vi-VN");
 
 function vnd(value) {
@@ -206,6 +206,25 @@ function normalizeOrder(order) {
 
 function normalizeOrders(items) {
   return Array.isArray(items) ? items.map(normalizeOrder) : [];
+}
+
+function normalizeCustomerTier(tier) {
+  const legacyMap = {
+    VIP: "Vip",
+    VIP1: "Vip1",
+    VIP2: "Vip2",
+    VIP3: "Vip3"
+  };
+  const nextTier = legacyMap[tier] ?? tier;
+  return customerTiers.includes(nextTier) ? nextTier : "Customer";
+}
+
+function normalizeCustomer(customer) {
+  return { ...customer, tier: normalizeCustomerTier(customer?.tier) };
+}
+
+function normalizeCustomers(items) {
+  return Array.isArray(items) ? items.map(normalizeCustomer) : [];
 }
 
 function statusLabel(status) {
@@ -357,7 +376,7 @@ function App() {
 
   const [accounts, setAccounts] = useStoredState(storageKeys.accounts, initialAccounts);
   const [orders, setOrders] = useStoredState(storageKeys.orders, [], normalizeOrders);
-  const [customers, setCustomers] = useStoredState(storageKeys.customers, []);
+  const [customers, setCustomers] = useStoredState(storageKeys.customers, [], normalizeCustomers);
   const [batches, setBatches] = useStoredState(storageKeys.batches, []);
   const [inventory, setInventory] = useStoredState(storageKeys.inventory, []);
   const [transactions, setTransactions] = useStoredState(storageKeys.transactions, []);
@@ -394,6 +413,7 @@ function App() {
     return {
       ...state,
       orders: normalizeOrders(stripDemo(state.orders, knownDemoOrderIds)),
+      customers: normalizeCustomers(state.customers),
       batches: stripDemo(state.batches, knownDemoBatchIds),
       inventory: stripDemo(state.inventory, knownDemoStockIds, "sku"),
       tasks: stripDemo(state.tasks, knownDemoTaskIds)
@@ -516,7 +536,7 @@ function App() {
             ? {
                 ...customer,
                 phone: order.phone || customer.phone,
-                tier: order.customerTier || customer.tier
+                tier: normalizeCustomerTier(order.customerTier || customer.tier)
               }
             : customer
         );
@@ -527,7 +547,7 @@ function App() {
           id: makeId("CUS"),
           name,
           phone: order.phone || "",
-          tier: order.customerTier || "Customer",
+          tier: normalizeCustomerTier(order.customerTier),
           note: ""
         }
       ];
@@ -574,14 +594,20 @@ function App() {
       supervisorId: order?.supervisorId ?? "ryan",
       assigneeId: order?.assigneeId ?? "staff-vn",
       buyerId: order?.buyerId ?? "staff-vn",
-      ...normalizeOrder(order)
+      ...normalizeOrder(order),
+      customerTier: normalizeCustomerTier(order?.customerTier)
     });
     setModal("order");
   }
 
   function saveOrder(event) {
     event.preventDefault();
-    const nextOrder = normalizeOrder({ ...draft, id: getOrderId(draft), quantity: Math.max(1, Number(draft.quantity || 1)) });
+    const nextOrder = normalizeOrder({
+      ...draft,
+      id: getOrderId(draft),
+      quantity: Math.max(1, Number(draft.quantity || 1)),
+      customerTier: normalizeCustomerTier(draft.customerTier)
+    });
     setOrders((current) => {
       const exists = current.some((order) => order.id === nextOrder.id);
       return exists ? current.map((order) => (order.id === nextOrder.id ? nextOrder : order)) : [nextOrder, ...current];
@@ -666,7 +692,7 @@ function App() {
 
   function saveCustomer(event) {
     event.preventDefault();
-    const nextCustomer = { ...draft, id: draft.id || makeId("CUS") };
+    const nextCustomer = normalizeCustomer({ ...draft, id: draft.id || makeId("CUS") });
     setCustomers((current) => {
       const exists = current.some((customer) => customer.id === nextCustomer.id);
       return exists ? current.map((customer) => (customer.id === nextCustomer.id ? nextCustomer : customer)) : [nextCustomer, ...current];
@@ -882,7 +908,7 @@ function App() {
         {activeView === "cashflow" && (
           <CashflowView orders={orders} batches={batches} transactions={transactions} openTransaction={openTransaction} openOrder={openOrder} canSeeProfit={canSeeProfit} />
         )}
-        {activeView === "tasks" && <TasksView tasks={tasks} accounts={accounts} openTask={openTask} />}
+        {activeView === "tasks" && <TasksView tasks={tasks} accounts={accounts} orders={orders} batches={batches} openTask={openTask} />}
       </main>
 
       {isSettingsOpen && (
@@ -1129,6 +1155,7 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
             <th>Sản phẩm<br /><span>Số lượng</span></th>
             <th>Tình trạng</th>
             <th>Chuyến bay</th>
+            <th>Deadline mua</th>
             <th>Tổng thu</th>
             <th>Tổng chi phí</th>
             <th>Cọc đã thu</th>
@@ -1148,6 +1175,7 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
                 <td>{order.product}<span>SL: {order.quantity}</span></td>
                 <td><span className={`status-chip ${normalizeOrderStatus(order.status)}`}>{statusLabel(order.status)}</span></td>
                 <td>{batch?.code || "Chưa xếp"}<span>{batch?.arrival ? `Về VN ${batch.arrival}` : ""}</span></td>
+                <td>{batch?.cutoff || "-"}<span>{batch?.cutoff ? dateLabel(batch.cutoff) : ""}</span></td>
                 <td>{vnd(finance.totalThuVnd)}</td>
                 <td>{vnd(finance.totalCostVnd)}</td>
                 <td>{vnd(finance.depositVnd)}</td>
@@ -1214,7 +1242,7 @@ function CustomersView({ customers, orders, openCustomer, openOrder }) {
               })}
             </tbody>
           </table>
-          {!customers.length && <EmptyState title="Chưa có khách hàng" body="Khi nhập đơn, khách sẽ tự lưu vào đây và có thể chỉnh hạng Customer/VIP." />}
+          {!customers.length && <EmptyState title="Chưa có khách hàng" body="Khi nhập đơn, khách sẽ tự lưu vào đây và có thể chỉnh hạng Customer/Vip." />}
         </div>
       </div>
     </div>
@@ -1486,7 +1514,7 @@ function CashflowView({ orders, batches, transactions, openTransaction, openOrde
   );
 }
 
-function TasksView({ tasks, accounts, openTask }) {
+function TasksView({ tasks, accounts, orders, batches, openTask }) {
   return (
     <div className="screen-stack">
       <div className="panel-title standalone">
@@ -1500,18 +1528,24 @@ function TasksView({ tasks, accounts, openTask }) {
         </button>
       </div>
       <div className="task-board-grid">
-        {tasks.map((task) => (
-          <article className={`task-card ${task.priority}`} key={task.id} onClick={() => openTask(task)}>
-            <span>{task.dueDate} {task.time}</span>
-            <strong>{task.title}</strong>
-            <p>{task.detail}</p>
-            <div className="task-checks">
-              {task.linkedOrderId && <em>Link: {task.linkedOrderId}</em>}
-              <em className={task.supervisorDone ? "done" : ""}>Giám sát: {accounts.find((item) => item.id === task.supervisorId)?.displayName ?? "-"}</em>
-              <em className={task.assigneeDone ? "done" : ""}>Phụ trách: {accounts.find((item) => item.id === task.assigneeId)?.displayName ?? "-"}</em>
-            </div>
-          </article>
-        ))}
+        {tasks.map((task) => {
+          const linkedOrder = orders.find((order) => order.id === task.linkedOrderId);
+          const linkedBatch = batches.find((batch) => batch.id === linkedOrder?.batchId);
+          return (
+            <article className={`task-card ${task.priority}`} key={task.id} onClick={() => openTask(task)}>
+              <span>{task.dueDate} {task.time}</span>
+              <strong>{task.title}</strong>
+              <p>{task.detail}</p>
+              <div className="task-checks">
+                {task.linkedOrderId && <em>Order: {task.linkedOrderId}</em>}
+                {linkedBatch && <em>Chuyến: {linkedBatch.code || linkedBatch.id} · Về VN {linkedBatch.arrival || "-"}</em>}
+                {linkedBatch?.cutoff && <em>Deadline mua: {linkedBatch.cutoff}</em>}
+                <em className={task.supervisorDone ? "done" : ""}>Giám sát: {accounts.find((item) => item.id === task.supervisorId)?.displayName ?? "-"}</em>
+                <em className={task.assigneeDone ? "done" : ""}>Phụ trách: {accounts.find((item) => item.id === task.assigneeId)?.displayName ?? "-"}</em>
+              </div>
+            </article>
+          );
+        })}
       </div>
       {!tasks.length && <EmptyState title="Chưa có việc" body="Bấm Thêm việc để giao việc cho người giám sát và người phụ trách." />}
     </div>
@@ -1558,6 +1592,7 @@ function Field({ label, children, wide }) {
 
 function OrderModal({ draft, setDraft, batches, accounts, customers, save, remove, close }) {
   const finance = orderFinance(draft);
+  const selectedBatch = batches.find((batch) => batch.id === draft.batchId);
   return (
     <ModalShell title="Sửa / thêm đơn hàng" eyebrow="Order management" close={close}>
       <form onSubmit={save}>
@@ -1587,6 +1622,11 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, save, remov
               {batches.map((batch) => <option value={batch.id} key={batch.id}>{batch.code || batch.id}</option>)}
             </select>
           </Field>
+          <div className="flight-link-hint">
+            <span>Deadline mua</span>
+            <strong>{selectedBatch?.cutoff || "-"}</strong>
+            <em>Bay {selectedBatch?.departure || "-"} · Về VN {selectedBatch?.arrival || "-"}</em>
+          </div>
           <Field label="Người giám sát">
             <select value={draft.supervisorId} onChange={(event) => setDraft({ ...draft, supervisorId: event.target.value })}>
               {accounts.filter((account) => account.active).map((account) => <option value={account.id} key={account.id}>{account.displayName}</option>)}
