@@ -49,43 +49,11 @@ const defaultState = {
     }
   ],
   orders: [],
+  customers: [],
   batches: [],
   inventory: [],
-  tasks: [
-    {
-      id: "task-dyson-quote",
-      title: "Chốt báo giá Dyson",
-      time: "17:45",
-      dueDate: "Hôm nay",
-      tone: "urgent",
-      status: "open",
-      assigneeId: "ryan",
-      linkedOrderId: "AU-260502-011",
-      detail: "Kiểm tra lại giá AUD, ship Úc, cước bay và còn phải thu trước khi báo khách."
-    },
-    {
-      id: "task-melbourne-cash",
-      title: "Kiểm tra thu/chi lô Melbourne",
-      time: "18:20",
-      dueDate: "Hôm nay",
-      tone: "gold",
-      status: "open",
-      assigneeId: "general-manager",
-      linkedOrderId: "batch-260508",
-      detail: "So lại tiền đã thu, còn phải thu và chi phí cước bay trước khi chốt lô."
-    },
-    {
-      id: "task-vip-bag-color",
-      title: "Nhắn khách VIP xác nhận màu túi",
-      time: "19:00",
-      dueDate: "Hôm nay",
-      tone: "green",
-      status: "open",
-      assigneeId: "staff-vn",
-      linkedOrderId: "AU-260502-009",
-      detail: "Xác nhận màu Black/Gold, note lại trong order sau khi khách phản hồi."
-    }
-  ]
+  transactions: [],
+  tasks: []
 };
 
 const supabase =
@@ -107,12 +75,19 @@ function pruneExpiredSessions() {
 }
 
 function mergeState(state = {}) {
+  const demoOrderIds = new Set(["AU-260503-014", "AU-260503-013", "AU-260502-011", "AU-260502-009", "AU-260501-006", "AU-260430-003"]);
+  const demoBatchIds = new Set(["batch-260508", "batch-260512", "batch-260515"]);
+  const demoStockSkus = new Set(["VN-AESOP-HW-500", "VN-CW-VIT-D3", "VN-RMW-BOOT-42", "VN-APPLE-WATCH10"]);
+  const demoTaskIds = new Set(["task-dyson-quote", "task-melbourne-cash", "task-vip-bag-color"]);
+
   return {
     accounts: Array.isArray(state.accounts) && state.accounts.length ? state.accounts : defaultState.accounts,
-    orders: Array.isArray(state.orders) ? state.orders : [],
-    batches: Array.isArray(state.batches) ? state.batches : [],
-    inventory: Array.isArray(state.inventory) ? state.inventory : [],
-    tasks: Array.isArray(state.tasks) ? state.tasks : defaultState.tasks
+    orders: Array.isArray(state.orders) ? state.orders.filter((order) => !demoOrderIds.has(order.id)) : [],
+    customers: Array.isArray(state.customers) ? state.customers : [],
+    batches: Array.isArray(state.batches) ? state.batches.filter((batch) => !demoBatchIds.has(batch.id)) : [],
+    inventory: Array.isArray(state.inventory) ? state.inventory.filter((item) => !demoStockSkus.has(item.sku)) : [],
+    transactions: Array.isArray(state.transactions) ? state.transactions : [],
+    tasks: Array.isArray(state.tasks) ? state.tasks.filter((task) => !demoTaskIds.has(task.id)) : []
   };
 }
 
@@ -198,8 +173,10 @@ function mergeClientState(serverState, clientState, account) {
   return {
     accounts: canManageUsers && Array.isArray(clientState.accounts) ? clientState.accounts : serverState.accounts,
     orders: Array.isArray(clientState.orders) ? clientState.orders : serverState.orders,
+    customers: Array.isArray(clientState.customers) ? clientState.customers : serverState.customers,
     batches: Array.isArray(clientState.batches) ? clientState.batches : serverState.batches,
     inventory: Array.isArray(clientState.inventory) ? clientState.inventory : serverState.inventory,
+    transactions: Array.isArray(clientState.transactions) ? clientState.transactions : serverState.transactions,
     tasks: Array.isArray(clientState.tasks) ? clientState.tasks : serverState.tasks
   };
 }
