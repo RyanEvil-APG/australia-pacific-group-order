@@ -70,7 +70,7 @@ const emptyOrder = {
   product: "",
   quantity: 1,
   source: "",
-  status: "new",
+  status: "waiting_buy",
   batchId: "",
   supervisorId: "ryan",
   assigneeId: "staff-vn",
@@ -148,13 +148,11 @@ const navItems = [
 ];
 
 const orderStatuses = [
-  { id: "new", label: "Mới tạo" },
-  { id: "buying", label: "Cần mua" },
+  { id: "waiting_buy", label: "Chờ mua" },
   { id: "purchased", label: "Đã mua" },
-  { id: "waiting_send", label: "Chờ gửi" },
-  { id: "shipping", label: "Đang gửi" },
-  { id: "arrived_vn", label: "Đã về VN" },
-  { id: "delivered", label: "Đã giao" },
+  { id: "sent_vn", label: "Đã gửi về VN" },
+  { id: "received_vn", label: "Đã nhận ở VN" },
+  { id: "delivered", label: "Đã giao khách" },
   { id: "cancelled", label: "Hủy" }
 ];
 
@@ -190,8 +188,29 @@ function money(value) {
   return Number(value || 0);
 }
 
+function normalizeOrderStatus(status) {
+  const legacyMap = {
+    new: "waiting_buy",
+    buying: "waiting_buy",
+    waiting_send: "purchased",
+    shipping: "sent_vn",
+    arrived_vn: "received_vn"
+  };
+  const nextStatus = legacyMap[status] ?? status;
+  return orderStatuses.some((item) => item.id === nextStatus) ? nextStatus : "waiting_buy";
+}
+
+function normalizeOrder(order) {
+  return { ...order, status: normalizeOrderStatus(order?.status) };
+}
+
+function normalizeOrders(items) {
+  return Array.isArray(items) ? items.map(normalizeOrder) : [];
+}
+
 function statusLabel(status) {
-  return orderStatuses.find((item) => item.id === status)?.label ?? status;
+  const normalizedStatus = normalizeOrderStatus(status);
+  return orderStatuses.find((item) => item.id === normalizedStatus)?.label ?? normalizedStatus;
 }
 
 function batchStatusLabel(status) {
@@ -337,7 +356,7 @@ function App() {
   );
 
   const [accounts, setAccounts] = useStoredState(storageKeys.accounts, initialAccounts);
-  const [orders, setOrders] = useStoredState(storageKeys.orders, []);
+  const [orders, setOrders] = useStoredState(storageKeys.orders, [], normalizeOrders);
   const [customers, setCustomers] = useStoredState(storageKeys.customers, []);
   const [batches, setBatches] = useStoredState(storageKeys.batches, []);
   const [inventory, setInventory] = useStoredState(storageKeys.inventory, []);
@@ -374,7 +393,7 @@ function App() {
   function cleanServerState(state) {
     return {
       ...state,
-      orders: stripDemo(state.orders, knownDemoOrderIds),
+      orders: normalizeOrders(stripDemo(state.orders, knownDemoOrderIds)),
       batches: stripDemo(state.batches, knownDemoBatchIds),
       inventory: stripDemo(state.inventory, knownDemoStockIds, "sku"),
       tasks: stripDemo(state.tasks, knownDemoTaskIds)
@@ -454,7 +473,7 @@ function App() {
     return orders.filter((order) => {
       const text = `${order.id} ${order.customer} ${order.phone} ${order.product} ${order.source}`.toLowerCase();
       const matchesQuery = text.includes(query.trim().toLowerCase());
-      const matchesStatus = statusFilter === "all" || order.status === statusFilter;
+      const matchesStatus = statusFilter === "all" || normalizeOrderStatus(order.status) === statusFilter;
       const matchesBatch = batchFilter === "all" || order.batchId === batchFilter;
       const matchesFrom = !dateFrom || String(order.orderDate || "") >= dateFrom;
       const matchesTo = !dateTo || String(order.orderDate || "") <= dateTo;
@@ -555,14 +574,14 @@ function App() {
       supervisorId: order?.supervisorId ?? "ryan",
       assigneeId: order?.assigneeId ?? "staff-vn",
       buyerId: order?.buyerId ?? "staff-vn",
-      ...order
+      ...normalizeOrder(order)
     });
     setModal("order");
   }
 
   function saveOrder(event) {
     event.preventDefault();
-    const nextOrder = { ...draft, id: getOrderId(draft), quantity: Math.max(1, Number(draft.quantity || 1)) };
+    const nextOrder = normalizeOrder({ ...draft, id: getOrderId(draft), quantity: Math.max(1, Number(draft.quantity || 1)) });
     setOrders((current) => {
       const exists = current.some((order) => order.id === nextOrder.id);
       return exists ? current.map((order) => (order.id === nextOrder.id ? nextOrder : order)) : [nextOrder, ...current];
@@ -1127,7 +1146,7 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
                 <td>{order.orderDate}</td>
                 <td>{order.customer}<span>{order.phone}</span></td>
                 <td>{order.product}<span>SL: {order.quantity}</span></td>
-                <td><span className={`status-chip ${order.status}`}>{statusLabel(order.status)}</span></td>
+                <td><span className={`status-chip ${normalizeOrderStatus(order.status)}`}>{statusLabel(order.status)}</span></td>
                 <td>{batch?.code || "Chưa xếp"}<span>{batch?.arrival ? `Về VN ${batch.arrival}` : ""}</span></td>
                 <td>{vnd(finance.totalThuVnd)}</td>
                 <td>{vnd(finance.totalCostVnd)}</td>

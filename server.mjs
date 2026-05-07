@@ -74,6 +74,23 @@ function pruneExpiredSessions() {
   }
 }
 
+function normalizeOrderStatus(status) {
+  const legacyMap = {
+    new: "waiting_buy",
+    buying: "waiting_buy",
+    waiting_send: "purchased",
+    shipping: "sent_vn",
+    arrived_vn: "received_vn"
+  };
+  const allowedStatuses = new Set(["waiting_buy", "purchased", "sent_vn", "received_vn", "delivered", "cancelled"]);
+  const nextStatus = legacyMap[status] ?? status;
+  return allowedStatuses.has(nextStatus) ? nextStatus : "waiting_buy";
+}
+
+function normalizeOrders(items) {
+  return Array.isArray(items) ? items.map((order) => ({ ...order, status: normalizeOrderStatus(order?.status) })) : [];
+}
+
 function mergeState(state = {}) {
   const demoOrderIds = new Set(["AU-260503-014", "AU-260503-013", "AU-260502-011", "AU-260502-009", "AU-260501-006", "AU-260430-003"]);
   const demoBatchIds = new Set(["batch-260508", "batch-260512", "batch-260515"]);
@@ -82,7 +99,7 @@ function mergeState(state = {}) {
 
   return {
     accounts: Array.isArray(state.accounts) && state.accounts.length ? state.accounts : defaultState.accounts,
-    orders: Array.isArray(state.orders) ? state.orders.filter((order) => !demoOrderIds.has(order.id)) : [],
+    orders: normalizeOrders(Array.isArray(state.orders) ? state.orders.filter((order) => !demoOrderIds.has(order.id)) : []),
     customers: Array.isArray(state.customers) ? state.customers : [],
     batches: Array.isArray(state.batches) ? state.batches.filter((batch) => !demoBatchIds.has(batch.id)) : [],
     inventory: Array.isArray(state.inventory) ? state.inventory.filter((item) => !demoStockSkus.has(item.sku)) : [],
@@ -172,7 +189,7 @@ function mergeClientState(serverState, clientState, account) {
   const canManageUsers = account.role === "admin";
   return {
     accounts: canManageUsers && Array.isArray(clientState.accounts) ? clientState.accounts : serverState.accounts,
-    orders: Array.isArray(clientState.orders) ? clientState.orders : serverState.orders,
+    orders: Array.isArray(clientState.orders) ? normalizeOrders(clientState.orders) : serverState.orders,
     customers: Array.isArray(clientState.customers) ? clientState.customers : serverState.customers,
     batches: Array.isArray(clientState.batches) ? clientState.batches : serverState.batches,
     inventory: Array.isArray(clientState.inventory) ? clientState.inventory : serverState.inventory,

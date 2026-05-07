@@ -434,6 +434,36 @@ tbody tr:hover {
   font-weight: 900;
 }
 
+.status-chip.waiting_buy {
+  color: #7b4216;
+  background: #fff1d4;
+}
+
+.status-chip.purchased {
+  color: #274d7a;
+  background: #e9f2ff;
+}
+
+.status-chip.sent_vn {
+  color: #11664f;
+  background: #e9f8f2;
+}
+
+.status-chip.received_vn {
+  color: #0c5c52;
+  background: #dff7ef;
+}
+
+.status-chip.delivered {
+  color: #214a32;
+  background: #e5f4df;
+}
+
+.status-chip.cancelled {
+  color: #8f2432;
+  background: #fff0f1;
+}
+
 .arrival-list {
   display: grid;
   gap: 8px;
