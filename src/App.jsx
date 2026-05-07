@@ -19,7 +19,6 @@ import {
   Settings,
   ShieldCheck,
   Trash2,
-  Truck,
   UserRound,
   WalletCards
 } from "lucide-react";
@@ -197,6 +196,57 @@ function statusLabel(status) {
 
 function batchStatusLabel(status) {
   return batchStatuses.find((item) => item.id === status)?.label ?? status;
+}
+
+function dateDiffFromToday(value) {
+  if (!value) return null;
+  const target = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(target.getTime())) return null;
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.ceil((target.getTime() - todayStart.getTime()) / 86400000);
+}
+
+function dateLabel(value) {
+  if (!value) return "-";
+  const diff = dateDiffFromToday(value);
+  if (diff === 0) return "Hôm nay";
+  if (diff === 1) return "Mai";
+  if (diff === -1) return "Hôm qua";
+  if (diff > 1) return `Còn ${diff} ngày`;
+  if (diff < -1) return `Qua ${Math.abs(diff)} ngày`;
+  return value;
+}
+
+function flightTimelineStage(batch) {
+  const cutoffDiff = dateDiffFromToday(batch.cutoff);
+  const departureDiff = dateDiffFromToday(batch.departure);
+  const arrivalDiff = dateDiffFromToday(batch.arrival);
+  const isInFlight =
+    batch.status === "shipping" ||
+    ((departureDiff === null || departureDiff <= 0) && arrivalDiff !== null && arrivalDiff >= 0 && batch.status !== "arrived");
+
+  if (isInFlight) {
+    return { label: "Đang bay", tone: "flying", focusDate: batch.arrival || batch.departure, sortDate: batch.arrival || batch.departure || batch.cutoff || "" };
+  }
+
+  if (arrivalDiff !== null && arrivalDiff >= 0 && arrivalDiff <= 7) {
+    return { label: "Sắp về VN", tone: "arriving", focusDate: batch.arrival, sortDate: batch.arrival };
+  }
+
+  if (departureDiff !== null && departureDiff >= 0 && departureDiff <= 7) {
+    return { label: "Chuẩn bị bay", tone: "ready", focusDate: batch.departure, sortDate: batch.departure };
+  }
+
+  if (cutoffDiff !== null && cutoffDiff >= 0 && cutoffDiff <= 5 && ["open", "closed"].includes(batch.status)) {
+    return { label: "Cần chốt mua", tone: "closing", focusDate: batch.cutoff, sortDate: batch.cutoff };
+  }
+
+  if (batch.status === "arrived" || (arrivalDiff !== null && arrivalDiff < 0)) {
+    return { label: "Đã về VN", tone: "done", focusDate: batch.arrival, sortDate: batch.arrival || batch.departure || batch.cutoff || "" };
+  }
+
+  return { label: "Sắp tới", tone: "upcoming", focusDate: batch.departure || batch.cutoff || batch.arrival, sortDate: batch.departure || batch.cutoff || batch.arrival || "" };
 }
 
 function normalizeInitials(value) {
@@ -901,10 +951,17 @@ function FilterBar({ query, setQuery, statusFilter, setStatusFilter, batchFilter
 
 function OverviewView(props) {
   const { totals, orders, filteredOrders, batches, openOrder, openBatch, canSeeProfit } = props;
-  const upcoming = batches
-    .filter((batch) => batch.arrival)
-    .sort((a, b) => String(a.arrival).localeCompare(String(b.arrival)))
-    .slice(0, 6);
+  const flightTimeline = batches
+    .map((batch) => {
+      const batchOrders = orders.filter((order) => order.batchId === batch.id);
+      const remaining = batchOrders.reduce((sum, order) => sum + orderFinance(order).remainingVnd, 0);
+      const revenue = batchOrders.reduce((sum, order) => sum + orderFinance(order).totalThuVnd, 0);
+      const stage = flightTimelineStage(batch);
+      return { batch, batchOrders, remaining, revenue, stage };
+    })
+    .filter((item) => item.stage.tone !== "done")
+    .sort((a, b) => String(a.stage.sortDate || "9999-12-31").localeCompare(String(b.stage.sortDate || "9999-12-31")))
+    .slice(0, 10);
 
   return (
     <div className="screen-stack">
@@ -917,46 +974,59 @@ function OverviewView(props) {
         {canSeeProfit && <Kpi label="Lãi dự kiến" value={vnd(totals.profit)} icon={Gem} tone="success" />}
       </section>
 
-      <section className="split-grid">
-        <div className="panel">
-          <div className="panel-title">
-            <div>
-              <span className="eyebrow">Order board</span>
-              <h2>Đơn cần quản lý</h2>
-            </div>
-            <button className="primary-button" onClick={() => openOrder()}>
-              <Plus size={17} />
-              Thêm đơn
+      <section className="panel flight-timeline-panel">
+        <div className="panel-title">
+          <div>
+            <span className="eyebrow">Flight control</span>
+            <h2>Timeline chuyến bay</h2>
+          </div>
+          <Plane size={18} />
+        </div>
+        <div className="flight-timeline">
+          {flightTimeline.map(({ batch, batchOrders, remaining, revenue, stage }) => (
+            <button className={`flight-stop ${stage.tone}`} key={batch.id} onClick={() => openBatch(batch)}>
+              <span className="flight-line" />
+              <span className="flight-dot" />
+              <div className="flight-card-head">
+                <strong>{batch.code || batch.id}</strong>
+                <em>{stage.label}</em>
+              </div>
+              <div className="flight-card-date">
+                <span>{dateLabel(stage.focusDate)}</span>
+                <strong>{stage.focusDate || "-"}</strong>
+              </div>
+              <div className="flight-card-meta">
+                <span>{batchOrders.length} đơn</span>
+                <span>Bay: {batch.departure || "-"}</span>
+                <span>Về VN: {batch.arrival || "-"}</span>
+              </div>
+              <div className="flight-card-money">
+                <span>Tổng thu {vnd(revenue)}</span>
+                <strong>Còn thu {vnd(remaining)}</strong>
+              </div>
             </button>
-          </div>
-          <OrdersTable orders={filteredOrders.slice(0, 10)} batches={batches} openOrder={openOrder} compact canSeeProfit={canSeeProfit} />
+          ))}
+          {!flightTimeline.length && (
+            <EmptyState
+              title="Chưa có chuyến bay sắp tới"
+              body="Vào tab Chuyến bay tạo lịch bay, nhập ngày cutoff, ngày bay và ngày về VN để Tổng quan tự lên timeline."
+            />
+          )}
         </div>
+      </section>
 
-        <div className="panel">
-          <div className="panel-title">
-            <div>
-              <span className="eyebrow">VN arrival</span>
-              <h2>Hàng sắp về VN</h2>
-            </div>
-            <Truck size={18} />
+      <section className="panel">
+        <div className="panel-title">
+          <div>
+            <span className="eyebrow">Order board</span>
+            <h2>Đơn cần quản lý</h2>
           </div>
-          <div className="arrival-list">
-            {upcoming.map((batch) => {
-              const count = orders.filter((order) => order.batchId === batch.id).length;
-              return (
-                <button className="arrival-row" key={batch.id} onClick={() => openBatch(batch)}>
-                  <div>
-                    <strong>{batch.arrival}</strong>
-                    <span>{batch.code || batch.id}</span>
-                  </div>
-                  <em>{count} đơn</em>
-                  <p>{batchStatusLabel(batch.status)}</p>
-                </button>
-              );
-            })}
-            {!upcoming.length && <EmptyState title="Chưa có lịch hàng về" body="Tạo chuyến bay và nhập ngày về VN để timeline hiện ở đây." />}
-          </div>
+          <button className="primary-button" onClick={() => openOrder()}>
+            <Plus size={17} />
+            Thêm đơn
+          </button>
         </div>
+        <OrdersTable orders={filteredOrders.slice(0, 10)} batches={batches} openOrder={openOrder} compact canSeeProfit={canSeeProfit} />
       </section>
 
       <section className="panel">

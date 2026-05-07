@@ -460,6 +460,150 @@ tbody tr:hover {
   font-weight: 900;
 }
 
+.flight-timeline-panel {
+  overflow: hidden;
+}
+
+.flight-timeline {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(230px, 1fr);
+  gap: 12px;
+  overflow-x: auto;
+  padding: 18px 16px 20px;
+  scrollbar-width: thin;
+}
+
+.flight-stop {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  min-height: 188px;
+  padding: 18px 14px 14px;
+  color: inherit;
+  background: #fffdf8;
+  border: 1px solid rgba(33, 29, 23, 0.1);
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  isolation: isolate;
+}
+
+.flight-stop:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 34px rgba(43, 33, 19, 0.08);
+}
+
+.flight-line {
+  position: absolute;
+  top: 25px;
+  left: -12px;
+  right: -12px;
+  height: 2px;
+  background: #ded4c4;
+  z-index: -1;
+}
+
+.flight-dot {
+  position: absolute;
+  top: 17px;
+  left: 14px;
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  border: 5px solid #9f8b66;
+  border-radius: 999px;
+}
+
+.flight-card-head,
+.flight-card-date,
+.flight-card-money {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.flight-card-head {
+  padding-top: 14px;
+}
+
+.flight-card-head strong {
+  font-size: 0.98rem;
+}
+
+.flight-card-head em {
+  padding: 5px 8px;
+  color: #493a25;
+  background: #f0e4cc;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.flight-card-date {
+  padding: 10px;
+  background: #f8f3ea;
+  border-radius: 8px;
+}
+
+.flight-card-date span,
+.flight-card-meta span,
+.flight-card-money span {
+  color: #7d7366;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.flight-card-date strong,
+.flight-card-money strong {
+  color: #211d17;
+  font-size: 0.86rem;
+}
+
+.flight-card-meta {
+  display: grid;
+  gap: 5px;
+}
+
+.flight-card-money {
+  padding-top: 8px;
+  border-top: 1px solid rgba(33, 29, 23, 0.09);
+}
+
+.flight-stop.closing .flight-dot,
+.flight-stop.closing .flight-card-head em {
+  border-color: #b7842a;
+  background: #fff1d4;
+}
+
+.flight-stop.ready .flight-dot,
+.flight-stop.ready .flight-card-head em {
+  border-color: #274d7a;
+  background: #e9f2ff;
+}
+
+.flight-stop.flying .flight-dot,
+.flight-stop.flying .flight-card-head em {
+  border-color: #11664f;
+  background: #e9f8f2;
+}
+
+.flight-stop.arriving .flight-dot,
+.flight-stop.arriving .flight-card-head em {
+  border-color: #9b2c3a;
+  background: #fff0f1;
+}
+
+.flight-stop.upcoming .flight-dot,
+.flight-stop.upcoming .flight-card-head em {
+  border-color: #9f8b66;
+  background: #f0e4cc;
+}
+
 .customer-tier-grid,
 .batch-management-grid,
 .task-board-grid,
