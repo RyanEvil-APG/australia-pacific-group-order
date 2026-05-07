@@ -143,8 +143,7 @@ const navItems = [
   { id: "orders", label: "Đơn hàng", icon: ClipboardList },
   { id: "customers", label: "Khách hàng", icon: UserRound },
   { id: "stock", label: "Hàng có sẵn", icon: Boxes },
-  { id: "batches", label: "Đợt hàng", icon: PackageCheck },
-  { id: "freight", label: "Cước bay", icon: Plane },
+  { id: "flights", label: "Chuyến bay", icon: Plane },
   { id: "cashflow", label: "Thu/chi", icon: CreditCard },
   { id: "tasks", label: "Board", icon: Bell }
 ];
@@ -810,8 +809,7 @@ function App() {
 
         {activeView === "customers" && <CustomersView customers={customers} orders={orders} openCustomer={openCustomer} openOrder={openOrder} />}
         {activeView === "stock" && <StockView inventory={inventory} openStock={openStock} />}
-        {activeView === "batches" && <BatchesView batches={batches} orders={orders} openBatch={openBatch} openOrder={openOrder} />}
-        {activeView === "freight" && <FreightView batches={batches} orders={orders} openBatch={openBatch} />}
+        {activeView === "flights" && <FlightsView batches={batches} orders={orders} openBatch={openBatch} openOrder={openOrder} canSeeProfit={canSeeProfit} />}
         {activeView === "cashflow" && (
           <CashflowView orders={orders} batches={batches} transactions={transactions} openTransaction={openTransaction} openOrder={openOrder} canSeeProfit={canSeeProfit} />
         )}
@@ -888,7 +886,7 @@ function FilterBar({ query, setQuery, statusFilter, setStatusFilter, batchFilter
         ))}
       </select>
       <select value={batchFilter} onChange={(event) => setBatchFilter(event.target.value)}>
-        <option value="all">Tất cả đợt hàng</option>
+        <option value="all">Tất cả chuyến bay</option>
         {batches.map((batch) => (
           <option value={batch.id} key={batch.id}>
             {batch.code || batch.id}
@@ -956,7 +954,7 @@ function OverviewView(props) {
                 </button>
               );
             })}
-            {!upcoming.length && <EmptyState title="Chưa có lịch hàng về" body="Tạo đợt hàng và nhập ngày về VN để timeline hiện ở đây." />}
+            {!upcoming.length && <EmptyState title="Chưa có lịch hàng về" body="Tạo chuyến bay và nhập ngày về VN để timeline hiện ở đây." />}
           </div>
         </div>
       </section>
@@ -1041,7 +1039,7 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
             <th>Khách</th>
             <th>Sản phẩm<br /><span>Số lượng</span></th>
             <th>Tình trạng</th>
-            <th>Đợt hàng</th>
+            <th>Chuyến bay</th>
             <th>Tổng thu</th>
             <th>Tổng chi phí</th>
             <th>Cọc đã thu</th>
@@ -1184,21 +1182,94 @@ function StockView({ inventory, openStock }) {
   );
 }
 
-function BatchesView({ batches, orders, openBatch, openOrder }) {
+function FlightsView({ batches, orders, openBatch, openOrder, canSeeProfit }) {
+  const upcomingBatches = [...batches].sort((a, b) => String(a.departure || a.arrival || "").localeCompare(String(b.departure || b.arrival || "")));
+  const totals = batches.reduce(
+    (sum, batch) => {
+      const batchOrders = orders.filter((order) => order.batchId === batch.id);
+      sum.orders += batchOrders.length;
+      sum.freightAud += money(batch.freightAud);
+      sum.remaining += batchOrders.reduce((orderSum, order) => orderSum + orderFinance(order).remainingVnd, 0);
+      sum.revenue += batchOrders.reduce((orderSum, order) => orderSum + orderFinance(order).totalThuVnd, 0);
+      sum.cost += batchOrders.reduce((orderSum, order) => orderSum + orderFinance(order).totalCostVnd, 0);
+      return sum;
+    },
+    { orders: 0, freightAud: 0, remaining: 0, revenue: 0, cost: 0 }
+  );
+
   return (
     <div className="screen-stack">
       <div className="panel-title standalone">
         <div>
-          <span className="eyebrow">Shipment batches</span>
-          <h2>Quản lý đợt hàng</h2>
+          <span className="eyebrow">Upcoming flights</span>
+          <h2>Chuyến bay & đợt hàng sắp tới</h2>
         </div>
         <button className="primary-button" onClick={() => openBatch()}>
           <Plus size={17} />
-          Thêm đợt
+          Thêm chuyến
         </button>
       </div>
+
+      <section className="metric-grid lean">
+        <Kpi label="Số chuyến" value={String(batches.length)} icon={Plane} />
+        <Kpi label="Order đã link" value={String(totals.orders)} icon={ClipboardList} />
+        <Kpi label="Cước bay AUD" value={aud(totals.freightAud)} icon={CreditCard} />
+        <Kpi label="Còn phải thu" value={vnd(totals.remaining)} icon={WalletCards} tone="warning" />
+        {canSeeProfit && <Kpi label="Lãi theo chuyến" value={vnd(totals.revenue - totals.cost)} icon={Gem} tone="success" />}
+      </section>
+
+      <div className="panel">
+        <div className="panel-title">
+          <div>
+            <span className="eyebrow">Linked flight table</span>
+            <h2>Bảng quản lý chuyến bay</h2>
+          </div>
+          <Plane size={18} />
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Chuyến/đợt</th>
+                <th>Trạng thái</th>
+                <th>Cutoff</th>
+                <th>Ngày bay</th>
+                <th>Ngày về VN</th>
+                <th>Cước bay</th>
+                <th>Order link</th>
+                <th>Tổng thu</th>
+                <th>Còn phải thu</th>
+                <th>Ghi chú</th>
+              </tr>
+            </thead>
+            <tbody>
+              {upcomingBatches.map((batch) => {
+                const batchOrders = orders.filter((order) => order.batchId === batch.id);
+                const revenue = batchOrders.reduce((sum, order) => sum + orderFinance(order).totalThuVnd, 0);
+                const remaining = batchOrders.reduce((sum, order) => sum + orderFinance(order).remainingVnd, 0);
+                return (
+                  <tr key={batch.id} onClick={() => openBatch(batch)}>
+                    <td><strong>{batch.code || batch.id}</strong><span>{batch.route}</span></td>
+                    <td><span className={`batch-chip ${batch.status}`}>{batchStatusLabel(batch.status)}</span></td>
+                    <td>{batch.cutoff || "-"}</td>
+                    <td>{batch.departure || "-"}</td>
+                    <td>{batch.arrival || "-"}</td>
+                    <td>{aud(batch.freightAud)}</td>
+                    <td>{batchOrders.length}</td>
+                    <td>{vnd(revenue)}</td>
+                    <td><span className="money-due">{vnd(remaining)}</span></td>
+                    <td>{batch.note}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {!upcomingBatches.length && <EmptyState title="Chưa có chuyến bay" body="Bấm Thêm chuyến để tạo lịch bay sắp tới, sau đó vào đơn hàng để xếp đơn vào chuyến." />}
+        </div>
+      </div>
+
       <div className="batch-management-grid">
-        {batches.map((batch) => {
+        {upcomingBatches.map((batch) => {
           const batchOrders = orders.filter((order) => order.batchId === batch.id);
           const remaining = batchOrders.reduce((sum, order) => sum + orderFinance(order).remainingVnd, 0);
           return (
@@ -1212,8 +1283,12 @@ function BatchesView({ batches, orders, openBatch, openOrder }) {
               </div>
               <div className="batch-stats">
                 <div><span>Order</span><strong>{batchOrders.length}</strong></div>
-                <div><span>Cutoff</span><strong>{batch.cutoff || "-"}</strong></div>
+                <div><span>Bay</span><strong>{batch.departure || "-"}</strong></div>
                 <div><span>Về VN</span><strong>{batch.arrival || "-"}</strong></div>
+              </div>
+              <div className="batch-cashline">
+                <span>Cước bay</span>
+                <strong>{aud(batch.freightAud)}</strong>
               </div>
               <div className="batch-cashline">
                 <span>Còn phải thu</span>
@@ -1227,63 +1302,7 @@ function BatchesView({ batches, orders, openBatch, openOrder }) {
           );
         })}
       </div>
-      {!batches.length && <EmptyState title="Chưa có đợt hàng" body="Tạo đợt hàng trước, sau đó xếp đơn vào đợt trong màn sửa đơn." />}
-    </div>
-  );
-}
-
-function FreightView({ batches, orders, openBatch }) {
-  return (
-    <div className="screen-stack">
-      <div className="panel-title standalone">
-        <div>
-          <span className="eyebrow">Air freight</span>
-          <h2>Cước bay theo đợt</h2>
-        </div>
-        <button className="primary-button" onClick={() => openBatch()}>
-          <Plus size={17} />
-          Thêm chuyến
-        </button>
-      </div>
-      <div className="status-board">
-        {batchStatuses.map((status) => (
-          <div className="status-tile" key={status.id}>
-            <Plane size={18} />
-            <span>{status.label}</span>
-            <strong>{batches.filter((batch) => batch.status === status.id).length}</strong>
-          </div>
-        ))}
-      </div>
-      <div className="panel">
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Đợt</th>
-                <th>Phân loại</th>
-                <th>Ngày bay</th>
-                <th>Ngày về VN</th>
-                <th>Cước bay AUD</th>
-                <th>Số đơn</th>
-                <th>Ghi chú</th>
-              </tr>
-            </thead>
-            <tbody>
-              {batches.map((batch) => (
-                <tr key={batch.id} onClick={() => openBatch(batch)}>
-                  <td><strong>{batch.code || batch.id}</strong></td>
-                  <td>{batchStatusLabel(batch.status)}</td>
-                  <td>{batch.departure}</td>
-                  <td>{batch.arrival}</td>
-                  <td>{aud(batch.freightAud)}</td>
-                  <td>{orders.filter((order) => order.batchId === batch.id).length}</td>
-                  <td>{batch.note}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {!batches.length && <EmptyState title="Chưa có chuyến bay" body="Tạo chuyến trước, sau đó xếp đơn vào chuyến trong màn sửa đơn." />}
     </div>
   );
 }
@@ -1473,7 +1492,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, save, remov
           <Field label="Sản phẩm" wide><input value={draft.product} onChange={(event) => setDraft({ ...draft, product: event.target.value })} /></Field>
           <Field label="Số lượng"><input type="number" value={draft.quantity} onChange={(event) => setDraft({ ...draft, quantity: event.target.value })} /></Field>
           <Field label="Nguồn mua"><input value={draft.source} onChange={(event) => setDraft({ ...draft, source: event.target.value })} /></Field>
-          <Field label="Đợt hàng">
+          <Field label="Chuyến bay">
             <select value={draft.batchId} onChange={(event) => setDraft({ ...draft, batchId: event.target.value })}>
               <option value="">Chưa xếp đợt</option>
               {batches.map((batch) => <option value={batch.id} key={batch.id}>{batch.code || batch.id}</option>)}
@@ -1524,7 +1543,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, save, remov
 
 function BatchModal({ draft, setDraft, save, remove, close }) {
   return (
-    <ModalShell title="Sửa / thêm đợt hàng" eyebrow="Batch management" close={close}>
+    <ModalShell title="Sửa / thêm chuyến bay" eyebrow="Flight management" close={close}>
       <form onSubmit={save}>
         <div className="form-grid">
           <Field label="Mã đợt"><input value={draft.code} onChange={(event) => setDraft({ ...draft, code: event.target.value })} /></Field>
@@ -1590,7 +1609,7 @@ function TransactionModal({ draft, setDraft, orders, batches, save, remove, clos
           <Field label="Số tiền VND"><input type="number" value={draft.amountVnd} onChange={(event) => setDraft({ ...draft, amountVnd: event.target.value })} /></Field>
           <Field label="Danh mục"><input value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value })} /></Field>
           <Field label="Order"><select value={draft.orderId} onChange={(event) => setDraft({ ...draft, orderId: event.target.value })}><option value="">Không link</option>{orders.map((order) => <option value={order.id} key={order.id}>{order.id} - {order.customer}</option>)}</select></Field>
-          <Field label="Đợt hàng"><select value={draft.batchId} onChange={(event) => setDraft({ ...draft, batchId: event.target.value })}><option value="">Không link</option>{batches.map((batch) => <option value={batch.id} key={batch.id}>{batch.code || batch.id}</option>)}</select></Field>
+          <Field label="Chuyến bay"><select value={draft.batchId} onChange={(event) => setDraft({ ...draft, batchId: event.target.value })}><option value="">Không link</option>{batches.map((batch) => <option value={batch.id} key={batch.id}>{batch.code || batch.id}</option>)}</select></Field>
           <Field label="Note" wide><textarea value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} /></Field>
         </div>
         <div className="modal-actions">
