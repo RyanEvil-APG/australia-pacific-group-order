@@ -1088,12 +1088,9 @@ function OverviewView(props) {
               <tr>
                 <th>Mã đơn</th>
                 <th>Khách</th>
-                <th>Sản phẩm</th>
-                <th>Số lượng</th>
+                <th>Sản phẩm<br /><span>Số lượng</span></th>
                 <th>Phụ phí</th>
-                <th>Ghi chú phụ phí</th>
                 <th>Tổng chi phí</th>
-                <th>Cọc đã thu</th>
                 <th>Còn phải thu</th>
               </tr>
             </thead>
@@ -1102,15 +1099,12 @@ function OverviewView(props) {
                 const finance = orderFinance(order);
                 return (
                   <tr key={order.id} onClick={() => openOrder(order)}>
-                    <td><strong>{order.id}</strong></td>
-                    <td>{order.customer}</td>
-                    <td>{order.product}</td>
-                    <td>{order.quantity}</td>
-                    <td>{vnd(order.extraFeeVnd)}</td>
-                    <td>{order.extraFeeNote}</td>
-                    <td>{vnd(finance.totalCostVnd)}</td>
-                    <td>{vnd(finance.depositVnd)}</td>
-                    <td><span className="money-due">{vnd(finance.remainingVnd)}</span></td>
+                    <td data-label="Mã đơn"><strong>{order.id}</strong></td>
+                    <td data-label="Khách">{order.customer}</td>
+                    <td data-label="Sản phẩm">{order.product}<span>SL: {order.quantity}</span></td>
+                    <td data-label="Phụ phí">{vnd(order.extraFeeVnd)}<span>{order.extraFeeNote}</span></td>
+                    <td data-label="Tổng chi phí">{vnd(finance.totalCostVnd)}<span>Cọc {vnd(finance.depositVnd)}</span></td>
+                    <td data-label="Còn phải thu"><span className="money-due">{vnd(finance.remainingVnd)}</span></td>
                   </tr>
                 );
               })}
@@ -1150,17 +1144,11 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
         <thead>
           <tr>
             <th>Mã đơn</th>
-            <th>Ngày</th>
             <th>Khách</th>
             <th>Sản phẩm<br /><span>Số lượng</span></th>
             <th>Tình trạng</th>
-            <th>Chuyến bay</th>
-            <th>Deadline mua</th>
-            <th>Tổng thu</th>
-            <th>Tổng chi phí</th>
-            <th>Cọc đã thu</th>
-            <th>Còn phải thu</th>
-            {canSeeProfit && <th>Lãi</th>}
+            <th>Chuyến bay<br /><span>Deadline mua</span></th>
+            <th>Tài chính</th>
           </tr>
         </thead>
         <tbody>
@@ -1169,18 +1157,22 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
             const batch = batches.find((item) => item.id === order.batchId);
             return (
               <tr key={order.id} onClick={() => openOrder(order)}>
-                <td><strong>{order.id}</strong><span>{order.source}</span></td>
-                <td>{order.orderDate}</td>
-                <td>{order.customer}<span>{order.phone}</span></td>
-                <td>{order.product}<span>SL: {order.quantity}</span></td>
-                <td><span className={`status-chip ${normalizeOrderStatus(order.status)}`}>{statusLabel(order.status)}</span></td>
-                <td>{batch?.code || "Chưa xếp"}<span>{batch?.arrival ? `Về VN ${batch.arrival}` : ""}</span></td>
-                <td>{batch?.cutoff || "-"}<span>{batch?.cutoff ? dateLabel(batch.cutoff) : ""}</span></td>
-                <td>{vnd(finance.totalThuVnd)}</td>
-                <td>{vnd(finance.totalCostVnd)}</td>
-                <td>{vnd(finance.depositVnd)}</td>
-                <td><span className="money-due">{vnd(finance.remainingVnd)}</span></td>
-                {canSeeProfit && <td>{vnd(finance.profitVnd)}</td>}
+                <td data-label="Mã đơn"><strong>{order.id}</strong><span>{order.orderDate}</span><span>{order.source}</span></td>
+                <td data-label="Khách">{order.customer}<span>{order.phone}</span></td>
+                <td data-label="Sản phẩm">{order.product}<span>SL: {order.quantity}</span></td>
+                <td data-label="Tình trạng"><span className={`status-chip ${normalizeOrderStatus(order.status)}`}>{statusLabel(order.status)}</span></td>
+                <td data-label="Chuyến bay">
+                  {batch?.code || "Chưa xếp"}
+                  <span>{batch?.cutoff ? `Deadline ${batch.cutoff} (${dateLabel(batch.cutoff)})` : "Chưa có deadline"}</span>
+                  <span>{batch?.arrival ? `Về VN ${batch.arrival}` : ""}</span>
+                </td>
+                <td data-label="Tài chính" className="finance-cell">
+                  <strong>{vnd(finance.totalThuVnd)}</strong>
+                  <span>Chi phí {vnd(finance.totalCostVnd)}</span>
+                  <span>Cọc {vnd(finance.depositVnd)}</span>
+                  <span className="money-due">Còn thu {vnd(finance.remainingVnd)}</span>
+                  {canSeeProfit && <span>Lãi {vnd(finance.profitVnd)}</span>}
+                </td>
               </tr>
             );
           })}
@@ -1231,12 +1223,12 @@ function CustomersView({ customers, orders, openCustomer, openOrder }) {
                 const revenue = customerOrders.reduce((sum, order) => sum + orderFinance(order).totalThuVnd, 0);
                 return (
                   <tr key={customer.id} onClick={() => openCustomer(customer)}>
-                    <td><strong>{customer.name}</strong></td>
-                    <td>{customer.tier}</td>
-                    <td>{customer.phone}</td>
-                    <td>{customerOrders.length}</td>
-                    <td>{vnd(revenue)}</td>
-                    <td>{customer.note}</td>
+                    <td data-label="Khách"><strong>{customer.name}</strong></td>
+                    <td data-label="Hạng">{customer.tier}</td>
+                    <td data-label="SĐT">{customer.phone}</td>
+                    <td data-label="Số đơn">{customerOrders.length}</td>
+                    <td data-label="Tổng thu">{vnd(revenue)}</td>
+                    <td data-label="Ghi chú">{customer.note}</td>
                   </tr>
                 );
               })}
@@ -1280,14 +1272,14 @@ function StockView({ inventory, openStock }) {
             <tbody>
               {inventory.map((item) => (
                 <tr key={item.sku} onClick={() => openStock(item)}>
-                  <td><strong>{item.sku}</strong></td>
-                  <td>{item.name}<span>{item.note}</span></td>
-                  <td>{item.quantity}</td>
-                  <td>{item.reserved}</td>
-                  <td>{Math.max(money(item.quantity) - money(item.reserved), 0)}</td>
-                  <td>{vnd(item.sellVnd)}</td>
-                  <td>{item.location}</td>
-                  <td>{item.status}</td>
+                  <td data-label="SKU"><strong>{item.sku}</strong></td>
+                  <td data-label="Sản phẩm">{item.name}<span>{item.note}</span></td>
+                  <td data-label="Tồn">{item.quantity}</td>
+                  <td data-label="Đang giữ">{item.reserved}</td>
+                  <td data-label="Có thể bán">{Math.max(money(item.quantity) - money(item.reserved), 0)}</td>
+                  <td data-label="Giá bán">{vnd(item.sellVnd)}</td>
+                  <td data-label="Kho/điểm giữ">{item.location}</td>
+                  <td data-label="Tình trạng">{item.status}</td>
                 </tr>
               ))}
             </tbody>
@@ -1349,13 +1341,9 @@ function FlightsView({ batches, orders, openBatch, openOrder, canSeeProfit }) {
               <tr>
                 <th>Chuyến/đợt</th>
                 <th>Trạng thái</th>
-                <th>Cutoff</th>
-                <th>Ngày bay</th>
-                <th>Ngày về VN</th>
-                <th>Cước bay</th>
-                <th>Order link</th>
-                <th>Tổng thu</th>
-                <th>Còn phải thu</th>
+                <th>Lịch bay</th>
+                <th>Order</th>
+                <th>Tài chính</th>
                 <th>Ghi chú</th>
               </tr>
             </thead>
@@ -1366,16 +1354,20 @@ function FlightsView({ batches, orders, openBatch, openOrder, canSeeProfit }) {
                 const remaining = batchOrders.reduce((sum, order) => sum + orderFinance(order).remainingVnd, 0);
                 return (
                   <tr key={batch.id} onClick={() => openBatch(batch)}>
-                    <td><strong>{batch.code || batch.id}</strong><span>{batch.route}</span></td>
-                    <td><span className={`batch-chip ${batch.status}`}>{batchStatusLabel(batch.status)}</span></td>
-                    <td>{batch.cutoff || "-"}</td>
-                    <td>{batch.departure || "-"}</td>
-                    <td>{batch.arrival || "-"}</td>
-                    <td>{aud(batch.freightAud)}</td>
-                    <td>{batchOrders.length}</td>
-                    <td>{vnd(revenue)}</td>
-                    <td><span className="money-due">{vnd(remaining)}</span></td>
-                    <td>{batch.note}</td>
+                    <td data-label="Chuyến/đợt"><strong>{batch.code || batch.id}</strong><span>{batch.route}</span></td>
+                    <td data-label="Trạng thái"><span className={`batch-chip ${batch.status}`}>{batchStatusLabel(batch.status)}</span></td>
+                    <td data-label="Lịch bay">
+                      <strong>Về VN {batch.arrival || "-"}</strong>
+                      <span>Bay {batch.departure || "-"}</span>
+                      <span>Cutoff {batch.cutoff || "-"}</span>
+                    </td>
+                    <td data-label="Order">{batchOrders.length}</td>
+                    <td data-label="Tài chính" className="finance-cell">
+                      <strong>{vnd(revenue)}</strong>
+                      <span>Cước bay {aud(batch.freightAud)}</span>
+                      <span className="money-due">Còn thu {vnd(remaining)}</span>
+                    </td>
+                    <td data-label="Ghi chú">{batch.note}</td>
                   </tr>
                 );
               })}
@@ -1464,12 +1456,12 @@ function CashflowView({ orders, batches, transactions, openTransaction, openOrde
             <tbody>
               {totalsByBatch.map(({ batch, revenue, deposit, remaining, cost }) => (
                 <tr key={batch.id}>
-                  <td><strong>{batch.code || batch.id}</strong></td>
-                  <td>{vnd(revenue)}</td>
-                  <td>{vnd(deposit)}</td>
-                  <td><span className="money-due">{vnd(remaining)}</span></td>
-                  <td>{vnd(cost)}</td>
-                  {canSeeProfit && <td>{vnd(revenue - cost)}</td>}
+                  <td data-label="Đợt"><strong>{batch.code || batch.id}</strong></td>
+                  <td data-label="Tổng thu / Doanh số">{vnd(revenue)}</td>
+                  <td data-label="Đã cọc / đã thu">{vnd(deposit)}</td>
+                  <td data-label="Số tiền còn lại phải thu"><span className="money-due">{vnd(remaining)}</span></td>
+                  <td data-label="Tổng chi phí">{vnd(cost)}</td>
+                  {canSeeProfit && <td data-label="Lãi dự kiến">{vnd(revenue - cost)}</td>}
                 </tr>
               ))}
             </tbody>
@@ -1496,13 +1488,13 @@ function CashflowView({ orders, batches, transactions, openTransaction, openOrde
             <tbody>
               {transactions.map((item) => (
                 <tr key={item.id} onClick={() => openTransaction(item)}>
-                  <td>{item.date}</td>
-                  <td>{item.type === "in" ? "Thu" : "Chi"}</td>
-                  <td>{vnd(item.amountVnd)}</td>
-                  <td>{item.orderId}</td>
-                  <td>{batches.find((batch) => batch.id === item.batchId)?.code ?? item.batchId}</td>
-                  <td>{item.category}</td>
-                  <td>{item.note}</td>
+                  <td data-label="Ngày">{item.date}</td>
+                  <td data-label="Loại">{item.type === "in" ? "Thu" : "Chi"}</td>
+                  <td data-label="Số tiền">{vnd(item.amountVnd)}</td>
+                  <td data-label="Order">{item.orderId}</td>
+                  <td data-label="Chuyến bay">{batches.find((batch) => batch.id === item.batchId)?.code ?? item.batchId}</td>
+                  <td data-label="Danh mục">{item.category}</td>
+                  <td data-label="Note">{item.note}</td>
                 </tr>
               ))}
             </tbody>

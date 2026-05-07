@@ -31,7 +31,7 @@ button {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr);
+  grid-template-columns: 216px minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -122,7 +122,7 @@ p {
 
 .workspace {
   min-width: 0;
-  padding: 22px;
+  padding: 18px;
 }
 
 .topbar {
@@ -132,8 +132,8 @@ p {
 }
 
 .topbar h1 {
-  font-size: clamp(2rem, 3.8vw, 3.4rem);
-  line-height: 1;
+  font-size: clamp(1.55rem, 2.5vw, 2.4rem);
+  line-height: 1.08;
   letter-spacing: 0;
 }
 
@@ -261,7 +261,7 @@ p {
 
 .filter-panel {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 170px 180px 150px 150px;
+  grid-template-columns: minmax(260px, 1.35fr) repeat(4, minmax(126px, 0.65fr));
   gap: 10px;
   padding: 12px;
 }
@@ -305,12 +305,12 @@ p {
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
   gap: 10px;
 }
 
 .metric-card {
-  min-height: 124px;
+  min-height: 104px;
   padding: 13px;
 }
 
@@ -377,29 +377,31 @@ th span {
 
 table {
   width: 100%;
-  min-width: 1080px;
+  min-width: 820px;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .compact-table {
-  min-width: 920px;
+  min-width: 760px;
 }
 
 th {
   height: 42px;
-  padding: 0 12px;
+  padding: 0 10px;
   color: #81786b;
-  font-size: 0.74rem;
+  font-size: 0.7rem;
   text-align: left;
   text-transform: uppercase;
 }
 
 td {
-  padding: 12px;
+  padding: 10px;
   color: #2b271f;
   border-top: 1px solid rgba(33, 29, 23, 0.08);
-  font-size: 0.88rem;
+  font-size: 0.84rem;
   vertical-align: top;
+  overflow-wrap: anywhere;
 }
 
 td strong,
@@ -417,6 +419,10 @@ tbody tr {
 
 tbody tr:hover {
   background: #fff8e8;
+}
+
+.finance-cell strong {
+  margin-bottom: 4px;
 }
 
 .status-chip,
@@ -639,7 +645,7 @@ tbody tr:hover {
 .task-board-grid,
 .status-board {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
 }
 
@@ -986,7 +992,10 @@ tbody tr:hover {
   .sidebar {
     display: grid;
     grid-template-columns: minmax(220px, auto) 1fr;
-    padding: 16px;
+    padding: 12px 14px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
   }
 
   .nav-list {
@@ -996,7 +1005,8 @@ tbody tr:hover {
   }
 
   .nav-item {
-    flex: 0 0 140px;
+    flex: 0 0 auto;
+    min-width: 126px;
   }
 
   .filter-panel,
@@ -1005,22 +1015,38 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 
-  .metric-grid,
-  .customer-tier-grid,
-  .batch-management-grid,
-  .task-board-grid,
-  .status-board {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .filter-panel {
+    grid-template-columns: minmax(240px, 1fr) repeat(2, minmax(140px, 0.5fr));
+  }
+
+  table {
+    min-width: 760px;
   }
 }
 
-@media (max-width: 680px) {
+@media (max-width: 820px) {
   .workspace {
     padding: 14px;
   }
 
   .sidebar {
     grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .brand p {
+    font-size: 0.92rem;
+  }
+
+  .brand span {
+    font-size: 0.74rem;
+  }
+
+  .nav-item {
+    min-width: 118px;
+    min-height: 38px;
+    padding: 0 10px;
+    font-size: 0.84rem;
   }
 
   .topbar {
@@ -1035,6 +1061,20 @@ tbody tr:hover {
   .account-chip,
   .top-actions .primary-button {
     flex: 1 1 100%;
+  }
+
+  .filter-panel {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .panel-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .panel-title .primary-button {
+    width: 100%;
   }
 
   .metric-grid,
@@ -1058,7 +1098,88 @@ tbody tr:hover {
     width: 100%;
   }
 
-  table {
-    min-width: 920px;
+  .table-wrap {
+    overflow-x: visible;
+  }
+
+  table,
+  thead,
+  tbody,
+  tr,
+  th,
+  td {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  thead {
+    display: none;
+  }
+
+  tbody {
+    display: grid;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  tbody tr {
+    display: grid;
+    gap: 0;
+    background: #fffdf8;
+    border: 1px solid rgba(33, 29, 23, 0.09);
+    border-radius: 8px;
+    box-shadow: 0 10px 24px rgba(43, 33, 19, 0.04);
+  }
+
+  tbody tr:hover {
+    background: #fffdf8;
+  }
+
+  td {
+    display: grid;
+    grid-template-columns: minmax(104px, 34%) minmax(0, 1fr);
+    gap: 10px;
+    min-height: 42px;
+    align-items: start;
+    padding: 10px 12px;
+    border-top: 1px solid rgba(33, 29, 23, 0.07);
+  }
+
+  td:first-child {
+    border-top: 0;
+  }
+
+  td::before {
+    content: attr(data-label);
+    color: #81786b;
+    font-size: 0.7rem;
+    font-weight: 950;
+    text-transform: uppercase;
+  }
+
+  td:empty {
+    display: none;
+  }
+
+  .status-chip,
+  .batch-chip {
+    max-width: 100%;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .flight-timeline {
+    grid-auto-columns: minmax(248px, 82vw);
+    padding: 14px 12px 16px;
+  }
+
+  .order-modal {
+    max-height: calc(100vh - 20px);
+    padding: 14px;
+  }
+
+  .login-panel {
+    padding: 18px;
   }
 }
