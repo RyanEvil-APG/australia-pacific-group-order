@@ -429,7 +429,7 @@ function App() {
 
   const activeAccount = accounts.find((account) => account.id === currentAccountId) ?? accounts[0];
   const canSeeProfit = activeAccount?.role === "admin" || activeAccount?.role === "general_manager";
-  const canManageUsers = activeAccount?.role === "admin";
+  const canManageUsers = activeAccount?.id === "ryan";
 
   const knownDemoOrderIds = React.useMemo(
     () => new Set(["AU-260503-014", "AU-260503-013", "AU-260502-011", "AU-260502-009", "AU-260501-006", "AU-260430-003"]),
@@ -758,6 +758,7 @@ function App() {
   }
 
   function updateAccount(accountId, field, value) {
+    if (!canManageUsers) return;
     setAccounts((current) =>
       current.map((account) =>
         account.id === accountId
@@ -772,6 +773,7 @@ function App() {
   }
 
   function uploadAccountAvatar(accountId, file) {
+    if (!canManageUsers) return;
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => updateAccount(accountId, "avatarUrl", String(reader.result || ""));
@@ -780,6 +782,7 @@ function App() {
 
   function createAccount(event) {
     event.preventDefault();
+    if (!canManageUsers) return;
     const form = new FormData(event.currentTarget);
     const username = String(form.get("username") || "").trim();
     if (!username || !form.get("password")) return;
@@ -802,6 +805,7 @@ function App() {
   }
 
   function removeAccount(accountId) {
+    if (!canManageUsers) return;
     if (accountId === "ryan" || accountId === currentAccountId) return;
     setAccounts((current) => current.filter((account) => account.id !== accountId));
   }
@@ -951,7 +955,7 @@ function App() {
         {activeView === "tasks" && <TasksView tasks={tasks} accounts={accounts} orders={orders} batches={batches} openTask={openTask} />}
       </main>
 
-      {isSettingsOpen && (
+      {isSettingsOpen && canManageUsers && (
         <SettingsModal
           accounts={accounts}
           currentAccountId={currentAccountId}

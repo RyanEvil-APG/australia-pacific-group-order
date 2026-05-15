@@ -176,8 +176,12 @@ function publicAccount(account, canManageUsers) {
   return canManageUsers ? account : safeAccount;
 }
 
+function canManageAccounts(account) {
+  return account?.id === "ryan";
+}
+
 function stateForAccount(state, account) {
-  const canManageUsers = account?.role === "admin";
+  const canManageUsers = canManageAccounts(account);
   return {
     ...state,
     accounts: state.accounts.map((item) => publicAccount(item, canManageUsers))
@@ -202,7 +206,7 @@ function sessionFromRequest(req) {
 }
 
 function mergeClientState(serverState, clientState, account) {
-  const canManageUsers = account.role === "admin";
+  const canManageUsers = canManageAccounts(account);
   return {
     accounts: canManageUsers && Array.isArray(clientState.accounts) ? clientState.accounts : serverState.accounts,
     orders: Array.isArray(clientState.orders) ? normalizeOrders(clientState.orders) : serverState.orders,
@@ -240,7 +244,7 @@ app.post("/api/login", async (req, res) => {
   return res.json({
     token,
     expiresInMs: SESSION_TTL_MS,
-    account: publicAccount(account, account.role === "admin"),
+    account: publicAccount(account, canManageAccounts(account)),
     state: stateForAccount(state, account)
   });
 });
