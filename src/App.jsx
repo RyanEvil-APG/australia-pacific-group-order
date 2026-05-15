@@ -388,6 +388,31 @@ function getOrderId(order) {
   return order.id || makeId("AU");
 }
 
+function compactDate(value) {
+  return String(value || today()).replaceAll("-", "");
+}
+
+function orderCodeSegment(batch) {
+  const raw = String(batch?.code || batch?.id || "NOFLIGHT").toUpperCase();
+  return raw.replace(/[^A-Z0-9]/g, "").slice(0, 10) || "NOFLIGHT";
+}
+
+function generateOrderCode(order, batch, orders) {
+  const codeDate = compactDate(batch?.arrival || batch?.departure || order?.orderDate || today());
+  const segment = orderCodeSegment(batch);
+  const prefix = `APG-${codeDate}-${segment}`;
+  const currentId = order?.id;
+  const nextNumber =
+    orders
+      .filter((item) => item.id !== currentId && String(item.id || "").startsWith(prefix))
+      .reduce((max, item) => {
+        const match = String(item.id || "").match(/-(\d+)$/);
+        return Math.max(max, match ? Number(match[1]) : 0);
+      }, 0) + 1;
+
+  return `${prefix}-${String(nextNumber).padStart(3, "0")}`;
+}
+
 function App() {
   const storageKeys = React.useMemo(
     () => ({
@@ -616,11 +641,14 @@ function App() {
   }
 
   function openOrder(order = null) {
+    const defaultBatchId = order?.batchId ?? batches[0]?.id ?? "";
+    const defaultDate = order?.orderDate ?? today();
+    const defaultBatch = batches.find((batch) => batch.id === defaultBatchId);
     setDraft({
       ...emptyOrder,
-      id: order?.id ?? makeId("AU"),
-      orderDate: order?.orderDate ?? today(),
-      batchId: order?.batchId ?? batches[0]?.id ?? "",
+      id: order?.id ?? generateOrderCode({ orderDate: defaultDate, batchId: defaultBatchId }, defaultBatch, orders),
+      orderDate: defaultDate,
+      batchId: defaultBatchId,
       supervisorId: order?.supervisorId ?? "ryan",
       assigneeId: order?.assigneeId ?? "staff-vn",
       buyerId: order?.buyerId ?? "staff-vn",
@@ -757,27 +785,21 @@ function App() {
     setModal(null);
   }
 
-  function updateAccount(accountId, field, value) {
+  function saveAccount(accountId, nextAccount) {
     if (!canManageUsers) return;
     setAccounts((current) =>
       current.map((account) =>
         account.id === accountId
           ? {
               ...account,
-              [field]: value,
-              label: field === "role" ? roleLabel(value) : account.label
+              ...nextAccount,
+              username: account.id === "ryan" ? account.username : nextAccount.username,
+              label: roleLabel(nextAccount.role || account.role),
+              initials: String(nextAccount.initials || "").toUpperCase()
             }
           : account
       )
     );
-  }
-
-  function uploadAccountAvatar(accountId, file) {
-    if (!canManageUsers) return;
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => updateAccount(accountId, "avatarUrl", String(reader.result || ""));
-    reader.readAsDataURL(file);
   }
 
   function createAccount(event) {
@@ -959,8 +981,7 @@ function App() {
         <SettingsModal
           accounts={accounts}
           currentAccountId={currentAccountId}
-          updateAccount={updateAccount}
-          uploadAccountAvatar={uploadAccountAvatar}
+          saveAccount={saveAccount}
           removeAccount={removeAccount}
           createAccount={createAccount}
           close={() => setIsSettingsOpen(false)}
@@ -974,6 +995,7 @@ function App() {
           batches={batches}
           accounts={accounts}
           customers={customers}
+          orders={orders}
           save={saveOrder}
           remove={deleteOrder}
           close={() => setModal(null)}
@@ -1635,14 +1657,25 @@ function Field({ label, children, wide }) {
   );
 }
 
-function OrderModal({ draft, setDraft, batches, accounts, customers, save, remove, close }) {
+function OrderModal({ draft, setDraft, batches, accounts, customers, orders, save, remove, close }) {
   const finance = orderFinance(draft);
   const selectedBatch = batches.find((batch) => batch.id === draft.batchId);
+  const generateCurrentOrderCode = () => {
+    setDraft({
+      ...draft,
+      id: generateOrderCode(draft, selectedBatch, orders)
+    });
+  };
   return (
     <ModalShell title="Sửa / thêm đơn hàng" eyebrow="Order management" close={close}>
       <form onSubmit={save}>
         <div className="form-grid">
-          <Field label="Mã đơn"><input value={draft.id} onChange={(event) => setDraft({ ...draft, id: event.target.value })} /></Field>
+          <Field label="Mã đơn">
+            <div className="inline-input-action">
+              <input value={draft.id} onChange={(event) => setDraft({ ...draft, id: event.target.value })} />
+              <button type="button" onClick={generateCurrentOrderCode}>Generate</button>
+            </div>
+          </Field>
           <Field label="Ngày tạo"><input type="date" value={draft.orderDate} onChange={(event) => setDraft({ ...draft, orderDate: event.target.value })} /></Field>
           <Field label="Khách hàng">
             <input list="customer-suggestions" value={draft.customer} onChange={(event) => setDraft({ ...draft, customer: event.target.value })} />
@@ -1852,35 +1885,61 @@ function TaskModal({ draft, setDraft, accounts, orders, save, remove, close }) {
   );
 }
 
-function SettingsModal({ accounts, currentAccountId, updateAccount, uploadAccountAvatar, removeAccount, createAccount, close }) {
+function AccountEditor({ account, currentAccountId, saveAccount, removeAccount }) {
+  const [draft, setDraft] = React.useState(account);
+
+  React.useEffect(() => {
+    setDraft(account);
+  }, [account]);
+
+  function updateDraft(field, value) {
+    setDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  function uploadAvatar(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => updateDraft("avatarUrl", String(reader.result || ""));
+    reader.readAsDataURL(file);
+  }
+
+  return (
+    <article className="user-row">
+      <div className="user-card-head">
+        <div className="user-identity">
+          <AccountAvatar account={draft} />
+          <div><strong>{draft.displayName}</strong><span>@{draft.username} · {roleLabel(draft.role)}</span></div>
+        </div>
+        <label className="active-toggle"><input type="checkbox" checked={draft.active} disabled={draft.id === "ryan"} onChange={(event) => updateDraft("active", event.target.checked)} /> Active</label>
+      </div>
+      <div className="user-fields-grid">
+        <Field label="Username"><input value={draft.username} disabled={draft.id === "ryan"} onChange={(event) => updateDraft("username", event.target.value)} /></Field>
+        <Field label="Tên"><input value={draft.displayName} onChange={(event) => updateDraft("displayName", event.target.value)} /></Field>
+        <Field label="Password"><input value={draft.password} onChange={(event) => updateDraft("password", event.target.value)} /></Field>
+        <Field label="Role"><select value={draft.role} onChange={(event) => updateDraft("role", event.target.value)}><option value="admin">Admin</option><option value="general_manager">General Manager</option><option value="staff">Staff</option></select></Field>
+        <Field label="Icon"><input value={draft.initials} onChange={(event) => updateDraft("initials", event.target.value.toUpperCase())} /></Field>
+        <Field label="Màu"><input type="color" value={draft.color} onChange={(event) => updateDraft("color", event.target.value)} /></Field>
+        <Field label="Upload avatar"><input type="file" accept="image/*" onChange={(event) => uploadAvatar(event.target.files?.[0])} /></Field>
+      </div>
+      <div className="user-card-footer">
+        <span>{draft.id === "ryan" ? "Owner account được khóa." : roleLabel(draft.role)}</span>
+        <div className="user-footer-actions">
+          <button className="ghost-button" type="button" onClick={() => setDraft(account)}>Hoàn tác</button>
+          <button className="primary-button" type="button" onClick={() => saveAccount(account.id, draft)}>Lưu user</button>
+          <button className="danger-button" type="button" disabled={account.id === "ryan" || account.id === currentAccountId} onClick={() => removeAccount(account.id)}>Xóa user</button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function SettingsModal({ accounts, currentAccountId, saveAccount, removeAccount, createAccount, close }) {
   return (
     <ModalShell title="Quản lý user & phân quyền" eyebrow="Admin settings" close={close}>
       <div className="settings-layout">
         <section className="user-list">
           {accounts.map((account) => (
-            <article className="user-row" key={account.id}>
-              <div className="user-card-head">
-                <div className="user-identity">
-                  <AccountAvatar account={account} />
-                  <div><strong>{account.displayName}</strong><span>@{account.username} · {account.label}</span></div>
-                </div>
-                <label className="active-toggle"><input type="checkbox" checked={account.active} disabled={account.id === "ryan"} onChange={(event) => updateAccount(account.id, "active", event.target.checked)} /> Active</label>
-              </div>
-              <div className="user-fields-grid">
-                <Field label="Username"><input value={account.username} disabled={account.id === "ryan"} onChange={(event) => updateAccount(account.id, "username", event.target.value)} /></Field>
-                <Field label="Tên"><input value={account.displayName} onChange={(event) => updateAccount(account.id, "displayName", event.target.value)} /></Field>
-                <Field label="Password"><input value={account.password} onChange={(event) => updateAccount(account.id, "password", event.target.value)} /></Field>
-                <Field label="Role"><select value={account.role} onChange={(event) => updateAccount(account.id, "role", event.target.value)}><option value="admin">Admin</option><option value="general_manager">General Manager</option><option value="staff">Staff</option></select></Field>
-                <Field label="Icon"><input value={account.initials} onChange={(event) => updateAccount(account.id, "initials", event.target.value.toUpperCase())} /></Field>
-                <Field label="Màu"><input type="color" value={account.color} onChange={(event) => updateAccount(account.id, "color", event.target.value)} /></Field>
-                <Field label="Avatar link"><input value={account.avatarUrl || ""} onChange={(event) => updateAccount(account.id, "avatarUrl", event.target.value)} placeholder="Dán link ảnh meme mèo" /></Field>
-                <Field label="Upload avatar"><input type="file" accept="image/*" onChange={(event) => uploadAccountAvatar(account.id, event.target.files?.[0])} /></Field>
-              </div>
-              <div className="user-card-footer">
-                <span>{account.id === "ryan" ? "Owner account được khóa." : roleLabel(account.role)}</span>
-                <button className="danger-button" disabled={account.id === "ryan" || account.id === currentAccountId} onClick={() => removeAccount(account.id)}>Xóa user</button>
-              </div>
-            </article>
+            <AccountEditor account={account} currentAccountId={currentAccountId} saveAccount={saveAccount} removeAccount={removeAccount} key={account.id} />
           ))}
         </section>
         <aside className="settings-side-panel">

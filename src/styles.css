@@ -280,6 +280,7 @@ p {
 .form-grid input,
 .form-grid select,
 .form-grid textarea,
+.inline-input-action input,
 .user-fields-grid input,
 .user-fields-grid select,
 .add-user-form input,
@@ -310,6 +311,22 @@ p {
   padding: 0;
   background: transparent;
   border: 0;
+}
+
+.inline-input-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.inline-input-action button {
+  min-height: 40px;
+  padding: 0 12px;
+  color: #fffaf0;
+  background: #274d7a;
+  border: 1px solid #274d7a;
+  border-radius: 8px;
+  font-weight: 900;
 }
 
 .metric-grid {
@@ -971,6 +988,13 @@ tbody tr:hover {
   gap: 12px;
 }
 
+.user-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .user-identity {
   gap: 10px;
 }
@@ -1112,12 +1136,14 @@ tbody tr:hover {
   }
 
   .modal-actions,
-  .batch-actions {
+  .batch-actions,
+  .user-footer-actions {
     display: grid;
   }
 
   .modal-actions button,
-  .batch-actions button {
+  .batch-actions button,
+  .user-footer-actions button {
     width: 100%;
   }
 
