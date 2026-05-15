@@ -24,6 +24,10 @@ import {
 } from "lucide-react";
 
 const exchangeRate = 17150;
+const orderFeeThresholdVnd = 500000;
+const lowValueBuyingFeeVnd = 50000;
+const highValueBuyingFeeRate = 0.1;
+const defaultFinalWeightRateVnd = 280000;
 
 const initialAccounts = [
   {
@@ -78,6 +82,8 @@ const emptyOrder = {
   aud: 0,
   shippingAud: 0,
   intlShippingAud: 0,
+  weightKg: 0,
+  finalWeightRateVnd: defaultFinalWeightRateVnd,
   exchangeRate,
   extraFeeVnd: 0,
   extraFeeNote: "",
@@ -307,14 +313,35 @@ function roleLabel(role) {
 
 function orderFinance(order) {
   const rate = money(order.exchangeRate) || exchangeRate;
-  const audCost = money(order.aud) + money(order.shippingAud) + money(order.intlShippingAud);
-  const totalCostVnd = audCost * rate + money(order.extraFeeVnd);
-  const totalThuVnd = money(order.totalThuVnd) || totalCostVnd;
+  const quantity = Math.max(1, money(order.quantity) || 1);
+  const unitAud = money(order.aud);
+  const goodsAud = unitAud * quantity;
+  const goodsVnd = goodsAud * rate;
+  const domesticShippingVnd = money(order.shippingAud) * rate;
+  const purchaseFeeVnd = goodsVnd < orderFeeThresholdVnd ? lowValueBuyingFeeVnd : goodsVnd * highValueBuyingFeeRate;
+  const airFreightAud = money(order.weightKg) * money(order.intlShippingAud);
+  const airFreightVnd = airFreightAud * rate;
+  const finalWeightRateVnd = money(order.finalWeightRateVnd) || defaultFinalWeightRateVnd;
+  const finalWeightChargeVnd = money(order.weightKg) * finalWeightRateVnd;
+  const totalCostVnd = goodsVnd + domesticShippingVnd + purchaseFeeVnd + airFreightVnd + money(order.extraFeeVnd);
+  const suggestedTotalThuVnd = goodsVnd + domesticShippingVnd + purchaseFeeVnd + finalWeightChargeVnd + money(order.extraFeeVnd);
+  const totalThuVnd = money(order.totalThuVnd) || suggestedTotalThuVnd;
   const depositVnd = money(order.depositVnd);
 
   return {
     rate,
-    audCost,
+    quantity,
+    unitAud,
+    goodsAud,
+    goodsVnd,
+    domesticShippingVnd,
+    purchaseFeeVnd,
+    airFreightAud,
+    airFreightVnd,
+    finalWeightRateVnd,
+    finalWeightChargeVnd,
+    suggestedTotalThuVnd,
+    weightProfitVnd: finalWeightChargeVnd - airFreightVnd,
     totalCostVnd,
     totalThuVnd,
     depositVnd,
@@ -606,6 +633,8 @@ function App() {
       ...draft,
       id: getOrderId(draft),
       quantity: Math.max(1, Number(draft.quantity || 1)),
+      weightKg: Math.max(0, Number(draft.weightKg || 0)),
+      finalWeightRateVnd: Math.max(0, Number(draft.finalWeightRateVnd || defaultFinalWeightRateVnd)),
       customerTier: normalizeCustomerTier(draft.customerTier)
     });
     setOrders((current) => {
@@ -1088,7 +1117,7 @@ function OverviewView(props) {
               <tr>
                 <th>Mã đơn</th>
                 <th>Khách</th>
-                <th>Sản phẩm<br /><span>Số lượng</span></th>
+                <th>Sản phẩm<br /><span>Số lượng/kg</span></th>
                 <th>Phụ phí</th>
                 <th>Tổng chi phí</th>
                 <th>Còn phải thu</th>
@@ -1101,7 +1130,7 @@ function OverviewView(props) {
                   <tr key={order.id} onClick={() => openOrder(order)}>
                     <td data-label="Mã đơn"><strong>{order.id}</strong></td>
                     <td data-label="Khách">{order.customer}</td>
-                    <td data-label="Sản phẩm">{order.product}<span>SL: {order.quantity}</span></td>
+                    <td data-label="Sản phẩm">{order.product}<span>SL: {order.quantity} · {money(order.weightKg)}kg</span></td>
                     <td data-label="Phụ phí">{vnd(order.extraFeeVnd)}<span>{order.extraFeeNote}</span></td>
                     <td data-label="Tổng chi phí">{vnd(finance.totalCostVnd)}<span>Cọc {vnd(finance.depositVnd)}</span></td>
                     <td data-label="Còn phải thu"><span className="money-due">{vnd(finance.remainingVnd)}</span></td>
@@ -1145,7 +1174,7 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
           <tr>
             <th>Mã đơn</th>
             <th>Khách</th>
-            <th>Sản phẩm<br /><span>Số lượng</span></th>
+            <th>Sản phẩm<br /><span>Số lượng/kg</span></th>
             <th>Tình trạng</th>
             <th>Chuyến bay<br /><span>Deadline mua</span></th>
             <th>Tài chính</th>
@@ -1159,7 +1188,7 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
               <tr key={order.id} onClick={() => openOrder(order)}>
                 <td data-label="Mã đơn"><strong>{order.id}</strong><span>{order.orderDate}</span><span>{order.source}</span></td>
                 <td data-label="Khách">{order.customer}<span>{order.phone}</span></td>
-                <td data-label="Sản phẩm">{order.product}<span>SL: {order.quantity}</span></td>
+                <td data-label="Sản phẩm">{order.product}<span>SL: {order.quantity} · {money(order.weightKg)}kg</span></td>
                 <td data-label="Tình trạng"><span className={`status-chip ${normalizeOrderStatus(order.status)}`}>{statusLabel(order.status)}</span></td>
                 <td data-label="Chuyến bay">
                   {batch?.code || "Chưa xếp"}
@@ -1606,7 +1635,8 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, save, remov
             </select>
           </Field>
           <Field label="Sản phẩm" wide><input value={draft.product} onChange={(event) => setDraft({ ...draft, product: event.target.value })} /></Field>
-          <Field label="Số lượng"><input type="number" value={draft.quantity} onChange={(event) => setDraft({ ...draft, quantity: event.target.value })} /></Field>
+          <Field label="Số lượng"><input type="number" min="1" value={draft.quantity} onChange={(event) => setDraft({ ...draft, quantity: event.target.value })} /></Field>
+          <Field label="Số kg"><input type="number" min="0" step="0.1" value={draft.weightKg ?? 0} onChange={(event) => setDraft({ ...draft, weightKg: event.target.value })} /></Field>
           <Field label="Nguồn mua"><input value={draft.source} onChange={(event) => setDraft({ ...draft, source: event.target.value })} /></Field>
           <Field label="Chuyến bay">
             <select value={draft.batchId} onChange={(event) => setDraft({ ...draft, batchId: event.target.value })}>
@@ -1634,9 +1664,10 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, save, remov
               {accounts.filter((account) => account.active).map((account) => <option value={account.id} key={account.id}>{account.displayName}</option>)}
             </select>
           </Field>
-          <Field label="Tiền hàng AUD"><input type="number" value={draft.aud} onChange={(event) => setDraft({ ...draft, aud: event.target.value })} /></Field>
+          <Field label="Tiền hàng AUD / sản phẩm"><input type="number" value={draft.aud} onChange={(event) => setDraft({ ...draft, aud: event.target.value })} /></Field>
           <Field label="Ship Úc AUD"><input type="number" value={draft.shippingAud} onChange={(event) => setDraft({ ...draft, shippingAud: event.target.value })} /></Field>
-          <Field label="Cước bay AUD"><input type="number" value={draft.intlShippingAud} onChange={(event) => setDraft({ ...draft, intlShippingAud: event.target.value })} /></Field>
+          <Field label="Giá AUD/kg"><input type="number" min="0" step="0.01" value={draft.intlShippingAud} onChange={(event) => setDraft({ ...draft, intlShippingAud: event.target.value })} /></Field>
+          <Field label="Giá cân cuối VND/kg"><input type="number" min="0" value={draft.finalWeightRateVnd ?? defaultFinalWeightRateVnd} onChange={(event) => setDraft({ ...draft, finalWeightRateVnd: event.target.value })} /></Field>
           <Field label="Tỉ giá"><input type="number" value={draft.exchangeRate} onChange={(event) => setDraft({ ...draft, exchangeRate: event.target.value })} /></Field>
           <Field label="Phụ phí VND"><input type="number" value={draft.extraFeeVnd} onChange={(event) => setDraft({ ...draft, extraFeeVnd: event.target.value })} /></Field>
           <Field label="Ghi chú phụ phí"><input value={draft.extraFeeNote} onChange={(event) => setDraft({ ...draft, extraFeeNote: event.target.value })} /></Field>
@@ -1648,7 +1679,14 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, save, remov
           {customers.map((customer) => <option value={customer.name} key={customer.id}>{customer.phone}</option>)}
         </datalist>
         <div className="auto-summary">
-          <div><span>Tổng chi phí tự động</span><strong>{vnd(finance.totalCostVnd)}</strong></div>
+          <div><span>Tiền hàng</span><strong>{vnd(finance.goodsVnd)}</strong></div>
+          <div><span>Phí mua hàng</span><strong>{vnd(finance.purchaseFeeVnd)}</strong></div>
+          <div><span>Cước cân gốc</span><strong>{vnd(finance.airFreightVnd)}</strong><small>{money(draft.weightKg)}kg x {aud(draft.intlShippingAud)}</small></div>
+          <div><span>Số tiền cân cuối</span><strong>{vnd(finance.finalWeightChargeVnd)}</strong><small>{money(draft.weightKg)}kg x {vnd(finance.finalWeightRateVnd)}</small></div>
+          <div><span>Lãi cân</span><strong>{vnd(finance.weightProfitVnd)}</strong></div>
+          <div><span>Ship Úc</span><strong>{vnd(finance.domesticShippingVnd)}</strong></div>
+          <div><span>Tổng thu tự động</span><strong>{vnd(finance.suggestedTotalThuVnd)}</strong></div>
+          <div><span>Tổng chi phí gốc</span><strong>{vnd(finance.totalCostVnd)}</strong></div>
           <div><span>Cọc đã thu</span><strong>{vnd(finance.depositVnd)}</strong></div>
           <div><span>Còn phải thu</span><strong>{vnd(finance.remainingVnd)}</strong></div>
         </div>

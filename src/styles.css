@@ -709,6 +709,14 @@ tbody tr:hover {
   text-transform: uppercase;
 }
 
+.auto-summary small {
+  display: block;
+  margin-top: 4px;
+  color: #756c60;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
 .flight-link-hint {
   display: grid;
   gap: 4px;
@@ -916,7 +924,7 @@ tbody tr:hover {
 
 .auto-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
   margin-top: 14px;
 }
