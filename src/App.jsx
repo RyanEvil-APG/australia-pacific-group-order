@@ -39,6 +39,7 @@ const initialAccounts = [
     label: "Admin",
     color: "#d1a54d",
     initials: "RV",
+    avatarUrl: "",
     active: true
   },
   {
@@ -50,6 +51,7 @@ const initialAccounts = [
     label: "General Manager",
     color: "#274d7a",
     initials: "GM",
+    avatarUrl: "",
     active: true
   },
   {
@@ -61,6 +63,7 @@ const initialAccounts = [
     label: "Staff",
     color: "#11664f",
     initials: "VN",
+    avatarUrl: "",
     active: true
   }
 ];
@@ -768,6 +771,13 @@ function App() {
     );
   }
 
+  function uploadAccountAvatar(accountId, file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => updateAccount(accountId, "avatarUrl", String(reader.result || ""));
+    reader.readAsDataURL(file);
+  }
+
   function createAccount(event) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -784,6 +794,7 @@ function App() {
         label: roleLabel(String(form.get("role") || "staff")),
         color: String(form.get("color") || "#11664f"),
         initials: normalizeInitials(String(form.get("displayName") || username)),
+        avatarUrl: "",
         active: true
       }
     ]);
@@ -945,6 +956,7 @@ function App() {
           accounts={accounts}
           currentAccountId={currentAccountId}
           updateAccount={updateAccount}
+          uploadAccountAvatar={uploadAccountAvatar}
           removeAccount={removeAccount}
           createAccount={createAccount}
           close={() => setIsSettingsOpen(false)}
@@ -975,6 +987,14 @@ function App() {
 }
 
 function AccountAvatar({ account }) {
+  if (account?.avatarUrl) {
+    return (
+      <span className="account-avatar image-avatar" style={{ background: account?.color ?? "#11664f" }}>
+        <img src={account.avatarUrl} alt={account?.displayName || account?.username || "User avatar"} />
+      </span>
+    );
+  }
+
   return (
     <span className="account-avatar" style={{ background: account?.color ?? "#11664f" }}>
       {account?.initials || normalizeInitials(account?.displayName || account?.username || "U")}
@@ -1828,7 +1848,7 @@ function TaskModal({ draft, setDraft, accounts, orders, save, remove, close }) {
   );
 }
 
-function SettingsModal({ accounts, currentAccountId, updateAccount, removeAccount, createAccount, close }) {
+function SettingsModal({ accounts, currentAccountId, updateAccount, uploadAccountAvatar, removeAccount, createAccount, close }) {
   return (
     <ModalShell title="Quản lý user & phân quyền" eyebrow="Admin settings" close={close}>
       <div className="settings-layout">
@@ -1849,6 +1869,8 @@ function SettingsModal({ accounts, currentAccountId, updateAccount, removeAccoun
                 <Field label="Role"><select value={account.role} onChange={(event) => updateAccount(account.id, "role", event.target.value)}><option value="admin">Admin</option><option value="general_manager">General Manager</option><option value="staff">Staff</option></select></Field>
                 <Field label="Icon"><input value={account.initials} onChange={(event) => updateAccount(account.id, "initials", event.target.value.toUpperCase())} /></Field>
                 <Field label="Màu"><input type="color" value={account.color} onChange={(event) => updateAccount(account.id, "color", event.target.value)} /></Field>
+                <Field label="Avatar link"><input value={account.avatarUrl || ""} onChange={(event) => updateAccount(account.id, "avatarUrl", event.target.value)} placeholder="Dán link ảnh meme mèo" /></Field>
+                <Field label="Upload avatar"><input type="file" accept="image/*" onChange={(event) => uploadAccountAvatar(account.id, event.target.files?.[0])} /></Field>
               </div>
               <div className="user-card-footer">
                 <span>{account.id === "ryan" ? "Owner account được khóa." : roleLabel(account.role)}</span>
