@@ -379,6 +379,113 @@ th span {
   color: #0b7658;
 }
 
+.overview-top-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.36fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.overview-buying-board {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.09);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(43, 33, 19, 0.05);
+}
+
+.overview-buying-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.overview-buying-head h2 {
+  font-size: 1rem;
+}
+
+.overview-buying-head button,
+.overview-buying-more,
+.overview-buying-item button {
+  min-height: 32px;
+  padding: 0 10px;
+  color: #fffaf0;
+  background: #274d7a;
+  border: 1px solid #274d7a;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.overview-buying-flight {
+  display: grid;
+  gap: 3px;
+  padding: 9px;
+  background: #f8f3ea;
+  border-radius: 8px;
+}
+
+.overview-buying-flight span,
+.overview-buying-empty {
+  color: #746c61;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.overview-buying-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.overview-buying-stats span {
+  padding: 8px;
+  color: #746c61;
+  background: #fff8e8;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.overview-buying-stats strong {
+  display: block;
+  margin-top: 3px;
+  color: #211d17;
+  font-size: 1rem;
+}
+
+.overview-buying-list {
+  display: grid;
+  gap: 7px;
+}
+
+.overview-buying-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: #fffdf8;
+  border: 1px solid rgba(33, 29, 23, 0.08);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.overview-buying-item .order-product-thumb {
+  width: 38px;
+  height: 38px;
+}
+
+.overview-buying-empty {
+  padding: 10px;
+  background: #f8f3ea;
+  border-radius: 8px;
+}
+
 .split-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.55fr);
@@ -1645,6 +1752,10 @@ tbody tr:hover {
     grid-template-columns: minmax(240px, 1fr) repeat(2, minmax(140px, 0.5fr));
   }
 
+  .overview-top-grid {
+    grid-template-columns: 1fr;
+  }
+
   table {
     min-width: 760px;
   }
@@ -1700,6 +1811,14 @@ tbody tr:hover {
   }
 
   .panel-title .primary-button {
+    width: 100%;
+  }
+
+  .overview-buying-item {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-buying-item button {
     width: 100%;
   }
 

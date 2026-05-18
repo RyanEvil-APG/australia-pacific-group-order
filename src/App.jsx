@@ -1071,6 +1071,7 @@ function App() {
             openOrder={openOrder}
             openBatch={openBatch}
             openBuyingChecklist={openBuyingChecklist}
+            updateOrderStatus={updateOrderStatus}
             canSeeProfit={canSeeProfit}
           />
         )}
@@ -1232,7 +1233,7 @@ function FilterBar({ query, setQuery, statusFilter, setStatusFilter, batchFilter
 }
 
 function OverviewView(props) {
-  const { totals, orders, filteredOrders, batches, openOrder, openBatch, openBuyingChecklist, canSeeProfit } = props;
+  const { totals, orders, filteredOrders, batches, openOrder, openBatch, openBuyingChecklist, updateOrderStatus, canSeeProfit } = props;
   const flightTimeline = batches
     .map((batch) => {
       const batchOrders = orders.filter((order) => order.batchId === batch.id);
@@ -1248,13 +1249,22 @@ function OverviewView(props) {
   return (
     <div className="screen-stack">
       <FilterBar {...props} />
-      <section className="metric-grid lean">
-        <Kpi label="Tổng thu / Doanh số" value={vnd(totals.revenue)} icon={WalletCards} />
-        <Kpi label="Đã cọc / đã thu" value={vnd(totals.deposit)} icon={ShieldCheck} />
-        <Kpi label="Còn phải thu" value={vnd(totals.remaining)} icon={CreditCard} tone="warning" />
-        <Kpi label="Tổng chi phí" value={vnd(totals.cost)} icon={Boxes} />
-        {canSeeProfit && <Kpi label="Lãi dự kiến" value={vnd(totals.profit)} icon={Gem} tone="success" />}
-      </section>
+      <div className="overview-top-grid">
+        <section className="metric-grid lean">
+          <Kpi label="Tổng thu / Doanh số" value={vnd(totals.revenue)} icon={WalletCards} />
+          <Kpi label="Đã cọc / đã thu" value={vnd(totals.deposit)} icon={ShieldCheck} />
+          <Kpi label="Còn phải thu" value={vnd(totals.remaining)} icon={CreditCard} tone="warning" />
+          <Kpi label="Tổng chi phí" value={vnd(totals.cost)} icon={Boxes} />
+          {canSeeProfit && <Kpi label="Lãi dự kiến" value={vnd(totals.profit)} icon={Gem} tone="success" />}
+        </section>
+        <OverviewBuyingBoard
+          batches={batches}
+          orders={orders}
+          openOrder={openOrder}
+          openBuyingChecklist={openBuyingChecklist}
+          updateOrderStatus={updateOrderStatus}
+        />
+      </div>
 
       <section className="panel flight-timeline-panel">
         <div className="panel-title">
@@ -1359,6 +1369,46 @@ function OverviewView(props) {
         </div>
       </section>
     </div>
+  );
+}
+
+function OverviewBuyingBoard({ batches, orders, openOrder, openBuyingChecklist, updateOrderStatus }) {
+  const nearestBatch = autoBatchForOrder(batches, today()) ?? sortedFlightBatches(batches)[0];
+  const waitingOrders = nearestBatch
+    ? orders.filter((order) => order.batchId === nearestBatch.id && normalizeOrderStatus(order.status) === "waiting_buy")
+    : [];
+  const purchasedOrders = nearestBatch
+    ? orders.filter((order) => order.batchId === nearestBatch.id && normalizeOrderStatus(order.status) === "purchased")
+    : [];
+
+  return (
+    <section className="overview-buying-board">
+      <div className="overview-buying-head">
+        <div>
+          <span className="eyebrow">Quick board</span>
+          <h2>Chưa mua chuyến gần nhất</h2>
+        </div>
+        <button type="button" onClick={() => openBuyingChecklist(nearestBatch?.id || "all")}>Mở</button>
+      </div>
+      <div className="overview-buying-flight">
+        <strong>{nearestBatch ? nearestBatch.code || nearestBatch.id : "Chưa có chuyến"}</strong>
+        <span>{nearestBatch ? `Cutoff ${nearestBatch.cutoff || "-"} · Về VN ${nearestBatch.arrival || "-"}` : "Tạo chuyến bay để tự gom đơn cần mua."}</span>
+      </div>
+      <div className="overview-buying-stats">
+        <span>Chờ mua <strong>{waitingOrders.length}</strong></span>
+        <span>Đã mua <strong>{purchasedOrders.length}</strong></span>
+      </div>
+      <div className="overview-buying-list">
+        {waitingOrders.slice(0, 3).map((order) => (
+          <div className="overview-buying-item" key={order.id} onClick={() => openOrder(order)}>
+            <ProductCell order={order} />
+            <button type="button" onClick={(event) => { event.stopPropagation(); updateOrderStatus(order.id, "purchased"); }}>Đã mua</button>
+          </div>
+        ))}
+        {!waitingOrders.length && <div className="overview-buying-empty">Chuyến gần nhất không còn đơn chờ mua.</div>}
+        {waitingOrders.length > 3 && <button className="overview-buying-more" type="button" onClick={() => openBuyingChecklist(nearestBatch.id)}>Xem thêm {waitingOrders.length - 3} đơn</button>}
+      </div>
+    </section>
   );
 }
 
