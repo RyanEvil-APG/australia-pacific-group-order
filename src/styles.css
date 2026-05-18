@@ -819,6 +819,126 @@ tbody tr:hover {
   font-weight: 900;
 }
 
+.packing-list-panel {
+  overflow: hidden;
+}
+
+.packing-list-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+  padding: 14px;
+}
+
+.packing-list-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  color: #211d17;
+  background: #fffdf8;
+  border: 1px solid rgba(33, 29, 23, 0.1);
+  border-radius: 8px;
+  text-align: left;
+}
+
+.packing-list-card:hover {
+  background: #fff8e8;
+  transform: translateY(-1px);
+}
+
+.packing-list-card.unassigned {
+  border-color: rgba(155, 44, 58, 0.22);
+}
+
+.packing-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.packing-card-head strong,
+.packing-list-card > span {
+  display: block;
+}
+
+.packing-list-card > span {
+  color: #746c61;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.packing-card-head em {
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.packing-card-head em.warn {
+  color: #7a202b;
+  background: #fff0f1;
+}
+
+.packing-card-head em.ok {
+  color: #0b7658;
+  background: #e9f8f2;
+}
+
+.packing-card-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.packing-card-stats span {
+  padding: 7px;
+  color: #746c61;
+  background: #f8f3ea;
+  border-radius: 8px;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.packing-card-stats strong {
+  display: block;
+  margin-top: 3px;
+  color: #211d17;
+  font-size: 0.96rem;
+}
+
+.buying-filter-panel {
+  overflow: hidden;
+}
+
+.buying-scope-list {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 12px 14px 14px;
+  scrollbar-width: thin;
+}
+
+.buying-scope-list button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 12px;
+  color: #554d42;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.12);
+  border-radius: 8px;
+  font-weight: 900;
+}
+
+.buying-scope-list button.active,
+.buying-scope-list button:hover {
+  color: #fffaf0;
+  background: #274d7a;
+  border-color: #274d7a;
+}
+
 .batch-modal-checklist {
   display: grid;
   gap: 12px;
@@ -1480,6 +1600,15 @@ tbody tr:hover {
   }
 
   .flight-checklist-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .packing-list-grid {
+    grid-template-columns: 1fr;
+    padding: 10px;
+  }
+
+  .packing-card-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

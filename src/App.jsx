@@ -156,9 +156,10 @@ const emptyTask = {
 const navItems = [
   { id: "overview", label: "Tổng quan", icon: LineChart },
   { id: "orders", label: "Đơn hàng", icon: ClipboardList },
-  { id: "customers", label: "Khách hàng", icon: UserRound },
-  { id: "stock", label: "Hàng có sẵn", icon: Boxes },
+  { id: "buying", label: "Buying Checklist", icon: PackageCheck },
   { id: "flights", label: "Chuyến bay", icon: Plane },
+  { id: "stock", label: "Hàng có sẵn", icon: Boxes },
+  { id: "customers", label: "Khách hàng", icon: UserRound },
   { id: "cashflow", label: "Thu/chi", icon: CreditCard },
   { id: "tasks", label: "Board", icon: Bell }
 ];
@@ -520,6 +521,7 @@ function App() {
   const [modal, setModal] = React.useState(null);
   const [draft, setDraft] = React.useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const [buyingFocusBatchId, setBuyingFocusBatchId] = React.useState("all");
   const deferredQuery = React.useDeferredValue(query);
   const hydratedFromServerRef = React.useRef(false);
   const lastSyncedPayloadRef = React.useRef("");
@@ -770,6 +772,11 @@ function App() {
 
   function updateOrderStatus(id, status) {
     setOrders((current) => current.map((order) => (order.id === id ? normalizeOrder({ ...order, status }) : order)));
+  }
+
+  function openBuyingChecklist(batchId = "all") {
+    setBuyingFocusBatchId(batchId || "all");
+    setActiveView("buying");
   }
 
   function openBatch(batch = null) {
@@ -1032,6 +1039,7 @@ function App() {
             setDateTo={setDateTo}
             openOrder={openOrder}
             openBatch={openBatch}
+            openBuyingChecklist={openBuyingChecklist}
             canSeeProfit={canSeeProfit}
           />
         )}
@@ -1057,9 +1065,31 @@ function App() {
           />
         )}
 
+        {activeView === "buying" && (
+          <BuyingChecklistView
+            batches={batches}
+            orders={orders}
+            focusBatchId={buyingFocusBatchId}
+            setFocusBatchId={setBuyingFocusBatchId}
+            openOrder={openOrder}
+            openBatch={openBatch}
+            updateOrderStatus={updateOrderStatus}
+          />
+        )}
+
         {activeView === "customers" && <CustomersView customers={customers} orders={orders} openCustomer={openCustomer} openOrder={openOrder} />}
         {activeView === "stock" && <StockView inventory={inventory} openStock={openStock} />}
-        {activeView === "flights" && <FlightsView batches={batches} orders={orders} openBatch={openBatch} openOrder={openOrder} updateOrderStatus={updateOrderStatus} canSeeProfit={canSeeProfit} />}
+        {activeView === "flights" && (
+          <FlightsView
+            batches={batches}
+            orders={orders}
+            openBatch={openBatch}
+            openOrder={openOrder}
+            openBuyingChecklist={openBuyingChecklist}
+            updateOrderStatus={updateOrderStatus}
+            canSeeProfit={canSeeProfit}
+          />
+        )}
         {activeView === "cashflow" && (
           <CashflowView orders={orders} batches={batches} transactions={transactions} openTransaction={openTransaction} openOrder={openOrder} canSeeProfit={canSeeProfit} />
         )}
@@ -1171,7 +1201,7 @@ function FilterBar({ query, setQuery, statusFilter, setStatusFilter, batchFilter
 }
 
 function OverviewView(props) {
-  const { totals, orders, filteredOrders, batches, openOrder, openBatch, canSeeProfit } = props;
+  const { totals, orders, filteredOrders, batches, openOrder, openBatch, openBuyingChecklist, canSeeProfit } = props;
   const flightTimeline = batches
     .map((batch) => {
       const batchOrders = orders.filter((order) => order.batchId === batch.id);
@@ -1235,6 +1265,14 @@ function OverviewView(props) {
           )}
         </div>
       </section>
+
+      <PackingListSummary
+        title="Packing list chuyến bay"
+        eyebrow="Flight packing"
+        batches={batches}
+        orders={orders}
+        openBuyingChecklist={openBuyingChecklist}
+      />
 
       <section className="panel">
         <div className="panel-title">
@@ -1502,8 +1540,131 @@ function flightOrderProgress(batchOrders) {
   );
 }
 
-function FlightsView({ batches, orders, openBatch, openOrder, updateOrderStatus, canSeeProfit }) {
-  const upcomingBatches = [...batches].sort((a, b) => String(a.departure || a.arrival || "").localeCompare(String(b.departure || b.arrival || "")));
+function sortedFlightBatches(batches) {
+  return [...batches].sort((a, b) => String(a.departure || a.arrival || "").localeCompare(String(b.departure || b.arrival || "")));
+}
+
+function PackingListSummary({ title, eyebrow, batches, orders, openBuyingChecklist }) {
+  const summaryBatches = sortedFlightBatches(batches)
+    .map((batch) => {
+      const batchOrders = orders.filter((order) => order.batchId === batch.id);
+      const progress = flightOrderProgress(batchOrders);
+      return { batch, progress };
+    })
+    .filter(({ progress }) => progress.total > 0 || batches.length <= 6)
+    .slice(0, 6);
+  const unassignedOrders = orders.filter((order) => !order.batchId && normalizeOrderStatus(order.status) !== "cancelled");
+
+  return (
+    <section className="panel packing-list-panel">
+      <div className="panel-title">
+        <div>
+          <span className="eyebrow">{eyebrow}</span>
+          <h2>{title}</h2>
+        </div>
+        <button className="ghost-button" type="button" onClick={() => openBuyingChecklist("all")}>
+          <PackageCheck size={16} />
+          Mở checklist
+        </button>
+      </div>
+      <div className="packing-list-grid">
+        {summaryBatches.map(({ batch, progress }) => (
+          <button className="packing-list-card" type="button" key={batch.id} onClick={() => openBuyingChecklist(batch.id)}>
+            <div className="packing-card-head">
+              <strong>{batch.code || batch.id}</strong>
+              <em className={progress.waitingBuy ? "warn" : "ok"}>{progress.waitingBuy ? `Thiếu ${progress.waitingBuy}` : "Đủ mua"}</em>
+            </div>
+            <span>Về VN {batch.arrival || "-"} · Cutoff {batch.cutoff || "-"}</span>
+            <div className="packing-card-stats">
+              <span>Chờ mua <strong>{progress.waitingBuy}</strong></span>
+              <span>Đã mua <strong>{progress.purchased}</strong></span>
+              <span>Đã gửi <strong>{progress.sentVn}</strong></span>
+              <span>Đã nhận <strong>{progress.receivedVn}</strong></span>
+            </div>
+          </button>
+        ))}
+        {unassignedOrders.length > 0 && (
+          <button className="packing-list-card unassigned" type="button" onClick={() => openBuyingChecklist("unassigned")}>
+            <div className="packing-card-head">
+              <strong>Chưa xếp chuyến</strong>
+              <em className="warn">{unassignedOrders.length} đơn</em>
+            </div>
+            <span>Cần gán vào chuyến bay trước khi chốt đợt.</span>
+            <div className="packing-card-stats">
+              <span>Chờ xử lý <strong>{unassignedOrders.length}</strong></span>
+              <span>Ưu tiên <strong>{unassignedOrders.filter((order) => normalizeOrderStatus(order.status) === "waiting_buy").length}</strong></span>
+            </div>
+          </button>
+        )}
+        {!summaryBatches.length && !unassignedOrders.length && (
+          <EmptyState title="Chưa có packing list" body="Tạo chuyến bay và gán đơn vào chuyến, packing list sẽ tự hiện để bấm xử lý nhanh." />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, openOrder, openBatch, updateOrderStatus }) {
+  const sortedBatches = sortedFlightBatches(batches);
+  const unassignedOrders = orders.filter((order) => !order.batchId && normalizeOrderStatus(order.status) !== "cancelled");
+  const visibleBatches = focusBatchId === "all" || focusBatchId === "unassigned" ? sortedBatches : sortedBatches.filter((batch) => batch.id === focusBatchId);
+  const visibleUnassigned = focusBatchId === "all" || focusBatchId === "unassigned" ? unassignedOrders : [];
+  const allVisibleOrders = [...visibleBatches.flatMap((batch) => orders.filter((order) => order.batchId === batch.id)), ...visibleUnassigned];
+  const progress = flightOrderProgress(allVisibleOrders);
+
+  return (
+    <div className="screen-stack">
+      <div className="panel-title standalone">
+        <div>
+          <span className="eyebrow">Operations checklist</span>
+          <h2>Buying Checklist & Packing List</h2>
+        </div>
+        <button className="primary-button" onClick={() => openBatch()}>
+          <Plus size={17} />
+          Thêm chuyến
+        </button>
+      </div>
+      <section className="metric-grid lean">
+        <Kpi label="Tổng đơn trong list" value={String(progress.total)} icon={ClipboardList} />
+        <Kpi label="Còn thiếu/chờ mua" value={String(progress.waitingBuy)} icon={PackageCheck} tone={progress.waitingBuy ? "warning" : "success"} />
+        <Kpi label="Đã mua chưa gửi" value={String(progress.purchased)} icon={CheckCircle2} />
+        <Kpi label="Đã gửi về VN" value={String(progress.sentVn)} icon={Plane} />
+        <Kpi label="Đã nhận ở VN" value={String(progress.receivedVn)} icon={Boxes} />
+      </section>
+      <section className="panel buying-filter-panel">
+        <div className="panel-title">
+          <div>
+            <span className="eyebrow">Packing scope</span>
+            <h2>Chọn chuyến để kiểm hàng</h2>
+          </div>
+        </div>
+        <div className="buying-scope-list">
+          <button className={focusBatchId === "all" ? "active" : ""} type="button" onClick={() => setFocusBatchId("all")}>Tất cả</button>
+          {sortedBatches.map((batch) => (
+            <button className={focusBatchId === batch.id ? "active" : ""} type="button" key={batch.id} onClick={() => setFocusBatchId(batch.id)}>
+              {batch.code || batch.id}
+            </button>
+          ))}
+          {unassignedOrders.length > 0 && (
+            <button className={focusBatchId === "unassigned" ? "active" : ""} type="button" onClick={() => setFocusBatchId("unassigned")}>
+              Chưa xếp chuyến ({unassignedOrders.length})
+            </button>
+          )}
+        </div>
+      </section>
+      <FlightChecklistPanel
+        batches={visibleBatches}
+        orders={orders}
+        unassignedOrders={visibleUnassigned}
+        openOrder={openOrder}
+        updateOrderStatus={updateOrderStatus}
+      />
+    </div>
+  );
+}
+
+function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklist, updateOrderStatus, canSeeProfit }) {
+  const upcomingBatches = sortedFlightBatches(batches);
   const unassignedOrders = orders.filter((order) => !order.batchId && normalizeOrderStatus(order.status) !== "cancelled");
   const totals = batches.reduce(
     (sum, batch) => {
@@ -1545,6 +1706,14 @@ function FlightsView({ batches, orders, openBatch, openOrder, updateOrderStatus,
         <Kpi label="Còn phải thu" value={vnd(totals.remaining)} icon={WalletCards} tone="warning" />
         {canSeeProfit && <Kpi label="Lãi theo chuyến" value={vnd(totals.revenue - totals.cost)} icon={Gem} tone="success" />}
       </section>
+
+      <PackingListSummary
+        title="Packing list theo chuyến"
+        eyebrow="Flight packing"
+        batches={batches}
+        orders={orders}
+        openBuyingChecklist={openBuyingChecklist}
+      />
 
       <div className="panel">
         <div className="panel-title">
@@ -1605,14 +1774,6 @@ function FlightsView({ batches, orders, openBatch, openOrder, updateOrderStatus,
           {!upcomingBatches.length && <EmptyState title="Chưa có chuyến bay" body="Bấm Thêm chuyến để tạo lịch bay sắp tới, sau đó vào đơn hàng để xếp đơn vào chuyến." />}
         </div>
       </div>
-
-      <FlightChecklistPanel
-        batches={upcomingBatches}
-        orders={orders}
-        unassignedOrders={unassignedOrders}
-        openOrder={openOrder}
-        updateOrderStatus={updateOrderStatus}
-      />
 
       <div className="batch-management-grid">
         {upcomingBatches.map((batch) => {
