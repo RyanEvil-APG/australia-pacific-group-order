@@ -1329,45 +1329,6 @@ function OverviewView(props) {
         <OrdersTable orders={filteredOrders.slice(0, 10)} batches={batches} openOrder={openOrder} compact canSeeProfit={canSeeProfit} />
       </section>
 
-      <section className="panel">
-        <div className="panel-title">
-          <div>
-            <span className="eyebrow">Extra fees</span>
-            <h2>Bảng phụ phí</h2>
-          </div>
-          <Filter size={18} />
-        </div>
-        <div className="table-wrap">
-          <table className="compact-table">
-            <thead>
-              <tr>
-                <th>Mã đơn</th>
-                <th>Khách</th>
-                <th>Sản phẩm<br /><span>Số lượng/kg</span></th>
-                <th>Phụ phí</th>
-                <th>Tổng chi phí</th>
-                <th>Còn phải thu</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredOrders.slice(0, 80).map((order) => {
-                const finance = orderFinance(order);
-                return (
-                  <tr key={order.id} onClick={() => openOrder(order)}>
-                    <td data-label="Mã đơn"><strong>{order.id}</strong></td>
-                    <td data-label="Khách">{order.customer}</td>
-                    <td data-label="Sản phẩm"><ProductCell order={order} /></td>
-                    <td data-label="Phụ phí">{vnd(order.extraFeeVnd)}<span>{order.extraFeeNote}</span></td>
-                    <td data-label="Tổng chi phí">{vnd(finance.totalCostVnd)}<span>Cọc {vnd(finance.depositVnd)}</span></td>
-                    <td data-label="Còn phải thu"><span className="money-due">{vnd(finance.remainingVnd)}</span></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {filteredOrders.length > 80 && <EmptyState title={`Đang hiện 80/${filteredOrders.length} dòng phụ phí`} body="Lọc theo chuyến bay hoặc thời gian để bảng nhẹ và dễ nhìn hơn." />}
-        </div>
-      </section>
     </div>
   );
 }
@@ -2313,127 +2274,130 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
   return (
     <ModalShell title="Sửa / thêm đơn hàng" eyebrow="Order management" close={close}>
       <form onSubmit={save}>
-        <div className="form-grid">
-          <Field label="Mã đơn">
-            <div className="inline-input-action">
-              <input value={draft.id} onChange={(event) => setDraft({ ...draft, id: event.target.value })} />
-              <button type="button" onClick={generateCurrentOrderCode}>Generate</button>
-            </div>
-          </Field>
-          <Field label="Ngày tạo">
-            <input
-              type="date"
-              value={draft.orderDate}
-              onChange={(event) => {
-                const nextDate = event.target.value;
-                const nextBatch = !draft.batchId ? autoBatchForOrder(batches, nextDate) : null;
-                setDraft({ ...draft, orderDate: nextDate, batchId: draft.batchId || nextBatch?.id || "" });
-              }}
-            />
-          </Field>
-          <Field label="Khách hàng">
-            <input list="customer-suggestions" value={draft.customer} onChange={(event) => setDraft({ ...draft, customer: event.target.value })} />
-          </Field>
-          <Field label="SĐT"><input value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} /></Field>
-          <Field label="Hạng khách">
-            <select value={draft.customerTier} onChange={(event) => setDraft({ ...draft, customerTier: event.target.value })}>
-              {customerTiers.map((tier) => <option key={tier}>{tier}</option>)}
-            </select>
-          </Field>
-          <Field label="Tình trạng">
-            <select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })}>
-              {orderStatuses.map((status) => <option value={status.id} key={status.id}>{status.label}</option>)}
-            </select>
-          </Field>
-          <Field label="Sản phẩm" wide><input value={draft.product} onChange={(event) => setDraft({ ...draft, product: event.target.value })} /></Field>
-          <Field label="Link mua hàng" wide>
-            <div className="inline-input-action">
-              <input value={draft.productUrl ?? ""} placeholder="Dán link mua hàng, app tự nhận shop và ảnh" onChange={(event) => setDraft({ ...draft, productUrl: event.target.value, source: looksLikeProductUrl(event.target.value) ? "" : draft.source, productImageSource: draft.productImageSource === "manual" ? "manual" : "" })} />
-              <button type="button" disabled={!looksLikeProductUrl(draft.productUrl) || previewStatus === "loading"} onClick={() => fetchProductPreview(draft.productUrl, true)}>
-                <RefreshCw size={15} /> Đọc link
-              </button>
-            </div>
-          </Field>
-          <Field label="Ảnh sản phẩm" wide>
-            <div className="product-media-editor">
-              <div className="product-media-preview">
-                {draft.productImageUrl ? <img src={productImageSrc(draft)} alt={draft.product || "Product"} /> : <ImageIcon size={28} />}
+        <div className="order-form-layout">
+          <div className="form-grid">
+            <Field label="Mã đơn">
+              <div className="inline-input-action">
+                <input value={draft.id} onChange={(event) => setDraft({ ...draft, id: event.target.value })} />
+                <button type="button" onClick={generateCurrentOrderCode}>Generate</button>
               </div>
-              <div className="product-media-controls">
-                <strong>{draft.productImageUrl ? (draft.productImageSource === "manual" ? "Ảnh upload tay" : "Ảnh lấy từ link") : "Chưa có ảnh sản phẩm"}</strong>
-                <span>{previewStatus === "loading" ? "Đang đọc link và tìm ảnh đại diện..." : previewError || "Ảnh giúp nhân viên mua hàng kiểm tra đúng mẫu nhanh hơn."}</span>
-                <label className="source-mini-field">
-                  Shop / nền tảng
-                  <input value={draft.source ?? ""} placeholder="Tự nhận từ link hoặc nhập tên shop" onChange={(event) => setDraft({ ...draft, source: event.target.value })} />
-                </label>
-                <div className="media-actions">
-                  {draft.productUrl && <a href={draft.productUrl} target="_blank" rel="noreferrer"><Link2 size={15} /> Mở link</a>}
-                  <label className="upload-button"><Upload size={15} /> Upload ảnh<input type="file" accept="image/*" onChange={(event) => uploadProductImage(event.target.files?.[0])} /></label>
-                  {draft.productImageUrl && <button type="button" onClick={() => setDraft({ ...draft, productImageUrl: "", productImageSource: "" })}>Bỏ ảnh</button>}
+            </Field>
+            <Field label="Ngày tạo">
+              <input
+                type="date"
+                value={draft.orderDate}
+                onChange={(event) => {
+                  const nextDate = event.target.value;
+                  const nextBatch = !draft.batchId ? autoBatchForOrder(batches, nextDate) : null;
+                  setDraft({ ...draft, orderDate: nextDate, batchId: draft.batchId || nextBatch?.id || "" });
+                }}
+              />
+            </Field>
+            <Field label="Khách hàng">
+              <input list="customer-suggestions" value={draft.customer} onChange={(event) => setDraft({ ...draft, customer: event.target.value })} />
+            </Field>
+            <Field label="SĐT"><input value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} /></Field>
+            <Field label="Hạng khách">
+              <select value={draft.customerTier} onChange={(event) => setDraft({ ...draft, customerTier: event.target.value })}>
+                {customerTiers.map((tier) => <option key={tier}>{tier}</option>)}
+              </select>
+            </Field>
+            <Field label="Tình trạng">
+              <select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })}>
+                {orderStatuses.map((status) => <option value={status.id} key={status.id}>{status.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Sản phẩm" wide><input value={draft.product} onChange={(event) => setDraft({ ...draft, product: event.target.value })} /></Field>
+            <Field label="Link mua hàng" wide>
+              <div className="inline-input-action">
+                <input value={draft.productUrl ?? ""} placeholder="Dán link mua hàng, app tự nhận shop và ảnh" onChange={(event) => setDraft({ ...draft, productUrl: event.target.value, source: looksLikeProductUrl(event.target.value) ? "" : draft.source, productImageSource: draft.productImageSource === "manual" ? "manual" : "" })} />
+                <button type="button" disabled={!looksLikeProductUrl(draft.productUrl) || previewStatus === "loading"} onClick={() => fetchProductPreview(draft.productUrl, true)}>
+                  <RefreshCw size={15} /> Đọc link
+                </button>
+              </div>
+            </Field>
+            <Field label="Ảnh sản phẩm" wide>
+              <div className="product-media-editor">
+                <div className="product-media-preview">
+                  {draft.productImageUrl ? <img src={productImageSrc(draft)} alt={draft.product || "Product"} /> : <ImageIcon size={28} />}
+                </div>
+                <div className="product-media-controls">
+                  <strong>{draft.productImageUrl ? (draft.productImageSource === "manual" ? "Ảnh upload tay" : "Ảnh lấy từ link") : "Chưa có ảnh sản phẩm"}</strong>
+                  <span>{previewStatus === "loading" ? "Đang đọc link và tìm ảnh đại diện..." : previewError || "Ảnh giúp nhân viên mua hàng kiểm tra đúng mẫu nhanh hơn."}</span>
+                  <label className="source-mini-field">
+                    Shop / nền tảng
+                    <input value={draft.source ?? ""} placeholder="Tự nhận từ link hoặc nhập tên shop" onChange={(event) => setDraft({ ...draft, source: event.target.value })} />
+                  </label>
+                  <div className="media-actions">
+                    {draft.productUrl && <a href={draft.productUrl} target="_blank" rel="noreferrer"><Link2 size={15} /> Mở link</a>}
+                    <label className="upload-button"><Upload size={15} /> Upload ảnh<input type="file" accept="image/*" onChange={(event) => uploadProductImage(event.target.files?.[0])} /></label>
+                    {draft.productImageUrl && <button type="button" onClick={() => setDraft({ ...draft, productImageUrl: "", productImageSource: "" })}>Bỏ ảnh</button>}
+                  </div>
                 </div>
               </div>
+            </Field>
+            <Field label="Số lượng"><input type="number" min="1" value={draft.quantity} onChange={(event) => setDraft({ ...draft, quantity: event.target.value })} /></Field>
+            <Field label="Số kg"><input type="number" min="0" step="0.1" value={draft.weightKg ?? 0} onChange={(event) => setDraft({ ...draft, weightKg: event.target.value })} /></Field>
+            <Field label="Chuyến bay">
+              <div className="flight-auto-picker">
+                <select value={draft.batchId} onChange={(event) => setDraft({ ...draft, batchId: event.target.value })}>
+                  <option value="">Chưa xếp đợt</option>
+                  {sortedFlightBatches(batches).map((batch) => <option value={batch.id} key={batch.id}>{batch.code || batch.id}</option>)}
+                </select>
+                <button type="button" disabled={!suggestedBatch || draft.batchId === suggestedBatch.id} onClick={applyAutoBatch}>
+                  Auto chuyến gần nhất
+                </button>
+              </div>
+              {suggestedBatch && <span className="field-hint">Gợi ý: {suggestedBatch.code || suggestedBatch.id} · Cutoff {suggestedBatch.cutoff || "-"} · Về VN {suggestedBatch.arrival || "-"}</span>}
+            </Field>
+            <div className="flight-link-hint">
+              <span>Deadline mua</span>
+              <strong>{selectedBatch?.cutoff || "-"}</strong>
+              <em>Bay {selectedBatch?.departure || "-"} · Về VN {selectedBatch?.arrival || "-"}</em>
             </div>
-          </Field>
-          <Field label="Số lượng"><input type="number" min="1" value={draft.quantity} onChange={(event) => setDraft({ ...draft, quantity: event.target.value })} /></Field>
-          <Field label="Số kg"><input type="number" min="0" step="0.1" value={draft.weightKg ?? 0} onChange={(event) => setDraft({ ...draft, weightKg: event.target.value })} /></Field>
-          <Field label="Chuyến bay">
-            <div className="flight-auto-picker">
-              <select value={draft.batchId} onChange={(event) => setDraft({ ...draft, batchId: event.target.value })}>
-                <option value="">Chưa xếp đợt</option>
-                {sortedFlightBatches(batches).map((batch) => <option value={batch.id} key={batch.id}>{batch.code || batch.id}</option>)}
+            <Field label="Người giám sát">
+              <select value={draft.supervisorId} onChange={(event) => setDraft({ ...draft, supervisorId: event.target.value })}>
+                {accounts.filter((account) => account.active).map((account) => <option value={account.id} key={account.id}>{account.displayName}</option>)}
               </select>
-              <button type="button" disabled={!suggestedBatch || draft.batchId === suggestedBatch.id} onClick={applyAutoBatch}>
-                Auto chuyến gần nhất
-              </button>
-            </div>
-            {suggestedBatch && <span className="field-hint">Gợi ý: {suggestedBatch.code || suggestedBatch.id} · Cutoff {suggestedBatch.cutoff || "-"} · Về VN {suggestedBatch.arrival || "-"}</span>}
-          </Field>
-          <div className="flight-link-hint">
-            <span>Deadline mua</span>
-            <strong>{selectedBatch?.cutoff || "-"}</strong>
-            <em>Bay {selectedBatch?.departure || "-"} · Về VN {selectedBatch?.arrival || "-"}</em>
+            </Field>
+            <Field label="Người phụ trách">
+              <select value={draft.assigneeId} onChange={(event) => setDraft({ ...draft, assigneeId: event.target.value })}>
+                {accounts.filter((account) => account.active).map((account) => <option value={account.id} key={account.id}>{account.displayName}</option>)}
+              </select>
+            </Field>
+            <Field label="Người đi mua">
+              <select value={draft.buyerId} onChange={(event) => setDraft({ ...draft, buyerId: event.target.value })}>
+                {accounts.filter((account) => account.active).map((account) => <option value={account.id} key={account.id}>{account.displayName}</option>)}
+              </select>
+            </Field>
+            <Field label="Tiền hàng AUD / sản phẩm"><input type="number" value={draft.aud} onChange={(event) => setDraft({ ...draft, aud: event.target.value })} /></Field>
+            <Field label="Ship Úc AUD"><input type="number" value={draft.shippingAud} onChange={(event) => setDraft({ ...draft, shippingAud: event.target.value })} /></Field>
+            <Field label="Giá AUD/kg"><input type="number" min="0" step="0.01" value={draft.intlShippingAud} onChange={(event) => setDraft({ ...draft, intlShippingAud: event.target.value })} /></Field>
+            <Field label="Giá cân cuối VND/kg"><input type="number" min="0" value={draft.finalWeightRateVnd ?? defaultFinalWeightRateVnd} onChange={(event) => setDraft({ ...draft, finalWeightRateVnd: event.target.value })} /></Field>
+            <Field label="Tỉ giá"><input type="number" value={draft.exchangeRate} onChange={(event) => setDraft({ ...draft, exchangeRate: event.target.value })} /></Field>
+            <Field label="Phụ phí VND"><input type="number" value={draft.extraFeeVnd} onChange={(event) => setDraft({ ...draft, extraFeeVnd: event.target.value })} /></Field>
+            <Field label="Ghi chú phụ phí"><input value={draft.extraFeeNote} onChange={(event) => setDraft({ ...draft, extraFeeNote: event.target.value })} /></Field>
+            <Field label="Tổng thu / Doanh số VND"><input type="number" value={draft.totalThuVnd} onChange={(event) => setDraft({ ...draft, totalThuVnd: event.target.value })} /></Field>
+            <Field label="Cọc đã thu VND"><input type="number" value={draft.depositVnd} onChange={(event) => setDraft({ ...draft, depositVnd: event.target.value })} /></Field>
+            <Field label="Note" wide><textarea value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} /></Field>
           </div>
-          <Field label="Người giám sát">
-            <select value={draft.supervisorId} onChange={(event) => setDraft({ ...draft, supervisorId: event.target.value })}>
-              {accounts.filter((account) => account.active).map((account) => <option value={account.id} key={account.id}>{account.displayName}</option>)}
-            </select>
-          </Field>
-          <Field label="Người phụ trách">
-            <select value={draft.assigneeId} onChange={(event) => setDraft({ ...draft, assigneeId: event.target.value })}>
-              {accounts.filter((account) => account.active).map((account) => <option value={account.id} key={account.id}>{account.displayName}</option>)}
-            </select>
-          </Field>
-          <Field label="Người đi mua">
-            <select value={draft.buyerId} onChange={(event) => setDraft({ ...draft, buyerId: event.target.value })}>
-              {accounts.filter((account) => account.active).map((account) => <option value={account.id} key={account.id}>{account.displayName}</option>)}
-            </select>
-          </Field>
-          <Field label="Tiền hàng AUD / sản phẩm"><input type="number" value={draft.aud} onChange={(event) => setDraft({ ...draft, aud: event.target.value })} /></Field>
-          <Field label="Ship Úc AUD"><input type="number" value={draft.shippingAud} onChange={(event) => setDraft({ ...draft, shippingAud: event.target.value })} /></Field>
-          <Field label="Giá AUD/kg"><input type="number" min="0" step="0.01" value={draft.intlShippingAud} onChange={(event) => setDraft({ ...draft, intlShippingAud: event.target.value })} /></Field>
-          <Field label="Giá cân cuối VND/kg"><input type="number" min="0" value={draft.finalWeightRateVnd ?? defaultFinalWeightRateVnd} onChange={(event) => setDraft({ ...draft, finalWeightRateVnd: event.target.value })} /></Field>
-          <Field label="Tỉ giá"><input type="number" value={draft.exchangeRate} onChange={(event) => setDraft({ ...draft, exchangeRate: event.target.value })} /></Field>
-          <Field label="Phụ phí VND"><input type="number" value={draft.extraFeeVnd} onChange={(event) => setDraft({ ...draft, extraFeeVnd: event.target.value })} /></Field>
-          <Field label="Ghi chú phụ phí"><input value={draft.extraFeeNote} onChange={(event) => setDraft({ ...draft, extraFeeNote: event.target.value })} /></Field>
-          <Field label="Tổng thu / Doanh số VND"><input type="number" value={draft.totalThuVnd} onChange={(event) => setDraft({ ...draft, totalThuVnd: event.target.value })} /></Field>
-          <Field label="Cọc đã thu VND"><input type="number" value={draft.depositVnd} onChange={(event) => setDraft({ ...draft, depositVnd: event.target.value })} /></Field>
-          <Field label="Note" wide><textarea value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} /></Field>
+          <div className="auto-summary">
+            <div className="summary-hero"><span>Còn phải thu</span><strong>{vnd(finance.remainingVnd)}</strong></div>
+            <div className="summary-hero"><span>Tổng thu</span><strong>{vnd(finance.totalThuVnd)}</strong></div>
+            <div><span>Tổng chi phí gốc</span><strong>{vnd(finance.totalCostVnd)}</strong></div>
+            <div><span>Cọc đã thu</span><strong>{vnd(finance.depositVnd)}</strong></div>
+            <div><span>Tiền hàng</span><strong>{vnd(finance.goodsVnd)}</strong></div>
+            <div><span>Phí mua hàng</span><strong>{vnd(finance.purchaseFeeVnd)}</strong></div>
+            <div><span>Cước cân gốc</span><strong>{vnd(finance.airFreightVnd)}</strong><small>{money(draft.weightKg)}kg x {aud(draft.intlShippingAud)}</small></div>
+            <div><span>Số tiền cân cuối</span><strong>{vnd(finance.finalWeightChargeVnd)}</strong><small>{money(draft.weightKg)}kg x {vnd(finance.finalWeightRateVnd)}</small></div>
+            <div><span>Lãi cân</span><strong>{vnd(finance.weightProfitVnd)}</strong></div>
+            <div><span>Ship Úc</span><strong>{vnd(finance.domesticShippingVnd)}</strong></div>
+            <div><span>Tổng thu tự động</span><strong>{vnd(finance.suggestedTotalThuVnd)}</strong></div>
+          </div>
         </div>
         <datalist id="customer-suggestions">
           {customers.map((customer) => <option value={customer.name} key={customer.id}>{customer.phone}</option>)}
         </datalist>
-        <div className="auto-summary">
-          <div><span>Tiền hàng</span><strong>{vnd(finance.goodsVnd)}</strong></div>
-          <div><span>Phí mua hàng</span><strong>{vnd(finance.purchaseFeeVnd)}</strong></div>
-          <div><span>Cước cân gốc</span><strong>{vnd(finance.airFreightVnd)}</strong><small>{money(draft.weightKg)}kg x {aud(draft.intlShippingAud)}</small></div>
-          <div><span>Số tiền cân cuối</span><strong>{vnd(finance.finalWeightChargeVnd)}</strong><small>{money(draft.weightKg)}kg x {vnd(finance.finalWeightRateVnd)}</small></div>
-          <div><span>Lãi cân</span><strong>{vnd(finance.weightProfitVnd)}</strong></div>
-          <div><span>Ship Úc</span><strong>{vnd(finance.domesticShippingVnd)}</strong></div>
-          <div><span>Tổng thu tự động</span><strong>{vnd(finance.suggestedTotalThuVnd)}</strong></div>
-          <div><span>Tổng chi phí gốc</span><strong>{vnd(finance.totalCostVnd)}</strong></div>
-          <div><span>Cọc đã thu</span><strong>{vnd(finance.depositVnd)}</strong></div>
-          <div><span>Còn phải thu</span><strong>{vnd(finance.remainingVnd)}</strong></div>
-        </div>
         <div className="modal-actions">
           <button className="ghost-button" type="button" onClick={close}>Hủy</button>
           <button className="danger-button" type="button" onClick={() => remove(draft.id)}><Trash2 size={16} /> Xóa</button>

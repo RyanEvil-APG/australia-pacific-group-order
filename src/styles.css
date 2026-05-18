@@ -1487,7 +1487,7 @@ tbody tr:hover {
 }
 
 .order-modal {
-  width: min(980px, 100%);
+  width: min(1180px, 100%);
   max-height: calc(100vh - 36px);
   overflow: auto;
   padding: 18px;
@@ -1505,6 +1505,13 @@ tbody tr:hover {
 
 .modal-head {
   margin-bottom: 18px;
+}
+
+.order-form-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  align-items: start;
+  gap: 14px;
 }
 
 .form-grid {
@@ -1636,9 +1643,29 @@ tbody tr:hover {
 
 .auto-summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px;
-  margin-top: 14px;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 150px);
+  overflow: auto;
+  padding: 10px;
+  background: #fffdf8;
+  border: 1px solid rgba(33, 29, 23, 0.09);
+  border-radius: 8px;
+}
+
+.auto-summary .summary-hero {
+  background: #211d17;
+}
+
+.auto-summary .summary-hero span {
+  color: #d9cdbb;
+}
+
+.auto-summary .summary-hero strong {
+  color: #fffaf0;
+  font-size: 1rem;
 }
 
 .modal-actions {
@@ -1744,6 +1771,7 @@ tbody tr:hover {
 
   .filter-panel,
   .split-grid,
+  .order-form-layout,
   .settings-layout {
     grid-template-columns: 1fr;
   }
@@ -1754,6 +1782,13 @@ tbody tr:hover {
 
   .overview-top-grid {
     grid-template-columns: 1fr;
+  }
+
+  .auto-summary {
+    position: static;
+    order: -1;
+    max-height: none;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   table {
@@ -1828,9 +1863,12 @@ tbody tr:hover {
   .task-board-grid,
   .status-board,
   .form-grid,
-  .auto-summary,
   .user-fields-grid {
     grid-template-columns: 1fr;
+  }
+
+  .auto-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .modal-actions,
