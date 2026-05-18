@@ -768,6 +768,10 @@ function App() {
     setModal(null);
   }
 
+  function updateOrderStatus(id, status) {
+    setOrders((current) => current.map((order) => (order.id === id ? normalizeOrder({ ...order, status }) : order)));
+  }
+
   function openBatch(batch = null) {
     setDraft({ ...emptyBatch, id: batch?.id ?? makeId("DOT"), code: batch?.code ?? "", ...batch });
     setModal("batch");
@@ -1055,7 +1059,7 @@ function App() {
 
         {activeView === "customers" && <CustomersView customers={customers} orders={orders} openCustomer={openCustomer} openOrder={openOrder} />}
         {activeView === "stock" && <StockView inventory={inventory} openStock={openStock} />}
-        {activeView === "flights" && <FlightsView batches={batches} orders={orders} openBatch={openBatch} openOrder={openOrder} canSeeProfit={canSeeProfit} />}
+        {activeView === "flights" && <FlightsView batches={batches} orders={orders} openBatch={openBatch} openOrder={openOrder} updateOrderStatus={updateOrderStatus} canSeeProfit={canSeeProfit} />}
         {activeView === "cashflow" && (
           <CashflowView orders={orders} batches={batches} transactions={transactions} openTransaction={openTransaction} openOrder={openOrder} canSeeProfit={canSeeProfit} />
         )}
@@ -1470,19 +1474,41 @@ function StockView({ inventory, openStock }) {
   );
 }
 
-function FlightsView({ batches, orders, openBatch, openOrder, canSeeProfit }) {
+function flightOrderProgress(batchOrders) {
+  return batchOrders.reduce(
+    (sum, order) => {
+      const status = normalizeOrderStatus(order.status);
+      sum.total += 1;
+      if (status === "waiting_buy") sum.waitingBuy += 1;
+      if (status === "purchased") sum.purchased += 1;
+      if (status === "sent_vn") sum.sentVn += 1;
+      if (status === "received_vn") sum.receivedVn += 1;
+      if (status === "delivered") sum.delivered += 1;
+      if (status === "cancelled") sum.cancelled += 1;
+      return sum;
+    },
+    { total: 0, waitingBuy: 0, purchased: 0, sentVn: 0, receivedVn: 0, delivered: 0, cancelled: 0 }
+  );
+}
+
+function FlightsView({ batches, orders, openBatch, openOrder, updateOrderStatus, canSeeProfit }) {
   const upcomingBatches = [...batches].sort((a, b) => String(a.departure || a.arrival || "").localeCompare(String(b.departure || b.arrival || "")));
+  const unassignedOrders = orders.filter((order) => !order.batchId && normalizeOrderStatus(order.status) !== "cancelled");
   const totals = batches.reduce(
     (sum, batch) => {
       const batchOrders = orders.filter((order) => order.batchId === batch.id);
+      const progress = flightOrderProgress(batchOrders);
       sum.orders += batchOrders.length;
+      sum.waitingBuy += progress.waitingBuy;
+      sum.purchased += progress.purchased;
+      sum.sentVn += progress.sentVn;
       sum.freightAud += money(batch.freightAud);
       sum.remaining += batchOrders.reduce((orderSum, order) => orderSum + orderFinance(order).remainingVnd, 0);
       sum.revenue += batchOrders.reduce((orderSum, order) => orderSum + orderFinance(order).totalThuVnd, 0);
       sum.cost += batchOrders.reduce((orderSum, order) => orderSum + orderFinance(order).totalCostVnd, 0);
       return sum;
     },
-    { orders: 0, freightAud: 0, remaining: 0, revenue: 0, cost: 0 }
+    { orders: 0, waitingBuy: 0, purchased: 0, sentVn: 0, freightAud: 0, remaining: 0, revenue: 0, cost: 0 }
   );
 
   return (
@@ -1501,6 +1527,9 @@ function FlightsView({ batches, orders, openBatch, openOrder, canSeeProfit }) {
       <section className="metric-grid lean">
         <Kpi label="Số chuyến" value={String(batches.length)} icon={Plane} />
         <Kpi label="Order đã link" value={String(totals.orders)} icon={ClipboardList} />
+        <Kpi label="Còn thiếu/chờ mua" value={String(totals.waitingBuy)} icon={PackageCheck} tone={totals.waitingBuy ? "warning" : "success"} />
+        <Kpi label="Đã mua chưa gửi" value={String(totals.purchased)} icon={CheckCircle2} />
+        <Kpi label="Chưa xếp chuyến" value={String(unassignedOrders.length)} icon={Filter} tone={unassignedOrders.length ? "warning" : ""} />
         <Kpi label="Cước bay AUD" value={aud(totals.freightAud)} icon={CreditCard} />
         <Kpi label="Còn phải thu" value={vnd(totals.remaining)} icon={WalletCards} tone="warning" />
         {canSeeProfit && <Kpi label="Lãi theo chuyến" value={vnd(totals.revenue - totals.cost)} icon={Gem} tone="success" />}
@@ -1522,6 +1551,7 @@ function FlightsView({ batches, orders, openBatch, openOrder, canSeeProfit }) {
                 <th>Trạng thái</th>
                 <th>Lịch bay</th>
                 <th>Order</th>
+                <th>Tiến độ hàng</th>
                 <th>Tài chính</th>
                 <th>Ghi chú</th>
               </tr>
@@ -1529,6 +1559,7 @@ function FlightsView({ batches, orders, openBatch, openOrder, canSeeProfit }) {
             <tbody>
               {upcomingBatches.map((batch) => {
                 const batchOrders = orders.filter((order) => order.batchId === batch.id);
+                const progress = flightOrderProgress(batchOrders);
                 const revenue = batchOrders.reduce((sum, order) => sum + orderFinance(order).totalThuVnd, 0);
                 const remaining = batchOrders.reduce((sum, order) => sum + orderFinance(order).remainingVnd, 0);
                 return (
@@ -1541,6 +1572,14 @@ function FlightsView({ batches, orders, openBatch, openOrder, canSeeProfit }) {
                       <span>Cutoff {batch.cutoff || "-"}</span>
                     </td>
                     <td data-label="Order">{batchOrders.length}</td>
+                    <td data-label="Tiến độ hàng">
+                      <div className="flight-progress-mini">
+                        <span className={progress.waitingBuy ? "warn" : ""}>Thiếu/chờ mua {progress.waitingBuy}</span>
+                        <span>Đã mua {progress.purchased}</span>
+                        <span>Đã gửi {progress.sentVn}</span>
+                        <span>Đã nhận {progress.receivedVn}</span>
+                      </div>
+                    </td>
                     <td data-label="Tài chính" className="finance-cell">
                       <strong>{vnd(revenue)}</strong>
                       <span>Cước bay {aud(batch.freightAud)}</span>
@@ -1556,9 +1595,18 @@ function FlightsView({ batches, orders, openBatch, openOrder, canSeeProfit }) {
         </div>
       </div>
 
+      <FlightChecklistPanel
+        batches={upcomingBatches}
+        orders={orders}
+        unassignedOrders={unassignedOrders}
+        openOrder={openOrder}
+        updateOrderStatus={updateOrderStatus}
+      />
+
       <div className="batch-management-grid">
         {upcomingBatches.map((batch) => {
           const batchOrders = orders.filter((order) => order.batchId === batch.id);
+          const progress = flightOrderProgress(batchOrders);
           const remaining = batchOrders.reduce((sum, order) => sum + orderFinance(order).remainingVnd, 0);
           return (
             <article className="batch-card" key={batch.id}>
@@ -1571,8 +1619,12 @@ function FlightsView({ batches, orders, openBatch, openOrder, canSeeProfit }) {
               </div>
               <div className="batch-stats">
                 <div><span>Order</span><strong>{batchOrders.length}</strong></div>
-                <div><span>Bay</span><strong>{batch.departure || "-"}</strong></div>
-                <div><span>Về VN</span><strong>{batch.arrival || "-"}</strong></div>
+                <div><span>Còn thiếu</span><strong>{progress.waitingBuy}</strong></div>
+                <div><span>Đã mua</span><strong>{progress.purchased + progress.sentVn + progress.receivedVn + progress.delivered}</strong></div>
+              </div>
+              <div className="flight-progress-stack">
+                <span>Bay {batch.departure || "-"} · Về VN {batch.arrival || "-"}</span>
+                <span>Đã gửi {progress.sentVn} · Đã nhận {progress.receivedVn} · Giao khách {progress.delivered}</span>
               </div>
               <div className="batch-cashline">
                 <span>Cước bay</span>
@@ -1592,6 +1644,89 @@ function FlightsView({ batches, orders, openBatch, openOrder, canSeeProfit }) {
       </div>
       {!batches.length && <EmptyState title="Chưa có chuyến bay" body="Tạo chuyến trước, sau đó xếp đơn vào chuyến trong màn sửa đơn." />}
     </div>
+  );
+}
+
+function FlightChecklistPanel({ batches, orders, unassignedOrders, openOrder, updateOrderStatus }) {
+  const groupedBatches = [
+    ...batches.map((batch) => ({
+      id: batch.id,
+      title: batch.code || batch.id,
+      subtitle: `Về VN ${batch.arrival || "-"} · Cutoff ${batch.cutoff || "-"}`,
+      orders: orders.filter((order) => order.batchId === batch.id)
+    })),
+    ...(unassignedOrders.length
+      ? [
+          {
+            id: "unassigned",
+            title: "Chưa xếp chuyến",
+            subtitle: "Các đơn này cần gán vào chuyến bay trước khi chốt đợt.",
+            orders: unassignedOrders
+          }
+        ]
+      : [])
+  ];
+
+  return (
+    <section className="panel flight-checklist-panel">
+      <div className="panel-title">
+        <div>
+          <span className="eyebrow">Buying checklist</span>
+          <h2>Checklist hàng theo chuyến</h2>
+        </div>
+        <PackageCheck size={18} />
+      </div>
+      <div className="flight-checklist-grid">
+        {groupedBatches.map((group) => {
+          const progress = flightOrderProgress(group.orders);
+          const actionableOrders = group.orders
+            .filter((order) => !["delivered", "cancelled"].includes(normalizeOrderStatus(order.status)))
+            .sort((a, b) => normalizeOrderStatus(a.status).localeCompare(normalizeOrderStatus(b.status)));
+          return (
+            <article className="flight-checklist-card" key={group.id}>
+              <div className="flight-checklist-head">
+                <div>
+                  <strong>{group.title}</strong>
+                  <span>{group.subtitle}</span>
+                </div>
+                <em className={progress.waitingBuy ? "warn" : "ok"}>{progress.waitingBuy ? `Thiếu ${progress.waitingBuy}` : "Đủ hàng"}</em>
+              </div>
+              <div className="flight-checklist-stats">
+                <span>Chờ mua <strong>{progress.waitingBuy}</strong></span>
+                <span>Đã mua <strong>{progress.purchased}</strong></span>
+                <span>Đã gửi <strong>{progress.sentVn}</strong></span>
+                <span>Đã nhận <strong>{progress.receivedVn}</strong></span>
+              </div>
+              <div className="flight-order-list">
+                {actionableOrders.slice(0, 12).map((order) => {
+                  const status = normalizeOrderStatus(order.status);
+                  return (
+                    <div className="flight-order-item" key={order.id} onClick={() => openOrder(order)}>
+                      <ProductCell order={order} />
+                      <div className="flight-order-meta">
+                        <strong>{order.id}</strong>
+                        <span>{order.customer || "-"} · SL {order.quantity} · {money(order.weightKg)}kg</span>
+                        <span className={`status-chip ${status}`}>{statusLabel(status)}</span>
+                      </div>
+                      <div className="flight-order-actions" onClick={(event) => event.stopPropagation()}>
+                        {status === "waiting_buy" && <button type="button" onClick={() => updateOrderStatus(order.id, "purchased")}>Đã mua</button>}
+                        {status === "purchased" && <button type="button" onClick={() => updateOrderStatus(order.id, "sent_vn")}>Đã gửi VN</button>}
+                        {status === "sent_vn" && <button type="button" onClick={() => updateOrderStatus(order.id, "received_vn")}>Đã nhận VN</button>}
+                        {status === "received_vn" && <button type="button" onClick={() => updateOrderStatus(order.id, "delivered")}>Đã giao</button>}
+                        <button type="button" onClick={() => openOrder(order)}>Sửa</button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {!actionableOrders.length && <EmptyState title="Không còn đơn cần xử lý" body="Các đơn trong chuyến này đã giao/hủy hoặc chưa có đơn nào được xếp vào chuyến." />}
+                {actionableOrders.length > 12 && <EmptyState title={`Đang hiện 12/${actionableOrders.length} đơn cần xử lý`} body="Mở tab Đơn hàng và lọc theo chuyến để xem toàn bộ." />}
+              </div>
+            </article>
+          );
+        })}
+        {!groupedBatches.length && <EmptyState title="Chưa có checklist chuyến" body="Tạo chuyến bay và gán đơn vào chuyến để thấy danh sách hàng cần mua/gửi/nhận." />}
+      </div>
+    </section>
   );
 }
 

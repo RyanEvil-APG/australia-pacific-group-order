@@ -666,6 +666,23 @@ tbody tr:hover {
   border-top: 1px solid rgba(33, 29, 23, 0.09);
 }
 
+.flight-progress-mini,
+.flight-progress-stack {
+  display: grid;
+  gap: 5px;
+}
+
+.flight-progress-mini span,
+.flight-progress-stack span {
+  color: #746c61;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.flight-progress-mini .warn {
+  color: #9b2c3a;
+}
+
 .flight-stop.closing .flight-dot,
 .flight-stop.closing .flight-card-head em {
   border-color: #b7842a;
@@ -800,6 +817,144 @@ tbody tr:hover {
   border: 1px solid rgba(33, 29, 23, 0.12);
   border-radius: 8px;
   font-weight: 900;
+}
+
+.flight-checklist-panel {
+  overflow: hidden;
+}
+
+.flight-checklist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+  padding: 14px;
+}
+
+.flight-checklist-card {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  background: #fffdf8;
+  border: 1px solid rgba(33, 29, 23, 0.09);
+  border-radius: 8px;
+}
+
+.flight-checklist-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.flight-checklist-head strong,
+.flight-checklist-head span {
+  display: block;
+}
+
+.flight-checklist-head span {
+  margin-top: 4px;
+  color: #746c61;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.flight-checklist-head em {
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.flight-checklist-head em.warn {
+  color: #7a202b;
+  background: #fff0f1;
+}
+
+.flight-checklist-head em.ok {
+  color: #0b7658;
+  background: #e9f8f2;
+}
+
+.flight-checklist-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.flight-checklist-stats span {
+  padding: 8px;
+  color: #746c61;
+  background: #f8f3ea;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.flight-checklist-stats strong {
+  display: block;
+  margin-top: 4px;
+  color: #211d17;
+  font-size: 1rem;
+}
+
+.flight-order-list {
+  display: grid;
+  gap: 8px;
+}
+
+.flight-order-item {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.1fr) minmax(130px, 0.8fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.08);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.flight-order-item:hover {
+  background: #fff8e8;
+}
+
+.flight-order-meta {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.flight-order-meta span {
+  color: #746c61;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.flight-order-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.flight-order-actions button {
+  min-height: 32px;
+  padding: 0 9px;
+  color: #211d17;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.12);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.flight-order-actions button:first-child {
+  color: #fffaf0;
+  background: #274d7a;
+  border-color: #274d7a;
 }
 
 .task-card {
@@ -1272,6 +1427,27 @@ tbody tr:hover {
 
   .product-media-preview {
     width: 86px;
+  }
+
+  .flight-checklist-grid {
+    grid-template-columns: 1fr;
+    padding: 10px;
+  }
+
+  .flight-checklist-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .flight-order-item {
+    grid-template-columns: 1fr;
+  }
+
+  .flight-order-actions {
+    justify-content: stretch;
+  }
+
+  .flight-order-actions button {
+    flex: 1 1 120px;
   }
 
   .inline-input-action {
