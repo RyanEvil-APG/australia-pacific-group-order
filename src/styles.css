@@ -810,6 +810,35 @@ tbody tr:hover {
   font-weight: 850;
 }
 
+.flight-auto-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.flight-auto-picker button {
+  min-height: 40px;
+  padding: 0 10px;
+  color: #fffaf0;
+  background: #274d7a;
+  border: 1px solid #274d7a;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.flight-auto-picker button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.field-hint {
+  color: #746c61;
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
 .batch-actions button {
   min-height: 34px;
   padding: 0 10px;
@@ -1626,6 +1655,14 @@ tbody tr:hover {
 
   .inline-input-action {
     grid-template-columns: 1fr;
+  }
+
+  .flight-auto-picker {
+    grid-template-columns: 1fr;
+  }
+
+  .flight-auto-picker button {
+    width: 100%;
   }
 
   .inline-input-action button {

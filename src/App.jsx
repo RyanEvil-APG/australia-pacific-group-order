@@ -279,6 +279,36 @@ function dateLabel(value) {
   return value;
 }
 
+function dateTime(value) {
+  if (!value) return null;
+  const time = new Date(`${value}T00:00:00`).getTime();
+  return Number.isNaN(time) ? null : time;
+}
+
+function autoBatchForOrder(batches, orderDate = today()) {
+  const refTime = dateTime(orderDate) ?? dateTime(today()) ?? Date.now();
+  const preferredStatuses = new Set(["open", "not_sent"]);
+  const blockedStatuses = new Set(["sent", "shipping", "arrived"]);
+  const scored = batches
+    .map((batch) => {
+      const cutoff = dateTime(batch.cutoff);
+      const departure = dateTime(batch.departure);
+      const arrival = dateTime(batch.arrival);
+      const nextTime = [cutoff, departure, arrival].filter((time) => time !== null && time >= refTime).sort((a, b) => a - b)[0] ?? null;
+      const primaryTime = (cutoff !== null && cutoff >= refTime ? cutoff : null) ?? nextTime;
+      const status = batch.status || "open";
+      return { batch, status, primaryTime, nextTime };
+    })
+    .filter((item) => item.nextTime !== null && !blockedStatuses.has(item.status));
+
+  const preferred = scored
+    .filter((item) => preferredStatuses.has(item.status))
+    .sort((a, b) => (a.primaryTime ?? a.nextTime) - (b.primaryTime ?? b.nextTime))[0];
+  if (preferred) return preferred.batch;
+
+  return scored.sort((a, b) => (a.primaryTime ?? a.nextTime) - (b.primaryTime ?? b.nextTime))[0]?.batch ?? null;
+}
+
 function flightTimelineStage(batch) {
   const cutoffDiff = dateDiffFromToday(batch.cutoff);
   const departureDiff = dateDiffFromToday(batch.departure);
@@ -728,8 +758,9 @@ function App() {
   }
 
   function openOrder(order = null) {
-    const defaultBatchId = order?.batchId ?? batches[0]?.id ?? "";
     const defaultDate = order?.orderDate ?? today();
+    const autoBatch = order ? null : autoBatchForOrder(batches, defaultDate);
+    const defaultBatchId = order?.batchId ?? autoBatch?.id ?? "";
     const defaultBatch = batches.find((batch) => batch.id === defaultBatchId);
     setDraft({
       ...emptyOrder,
@@ -2084,6 +2115,7 @@ function Field({ label, children, wide }) {
 function OrderModal({ draft, setDraft, batches, accounts, customers, orders, sessionToken, save, remove, close }) {
   const finance = orderFinance(draft);
   const selectedBatch = batches.find((batch) => batch.id === draft.batchId);
+  const suggestedBatch = autoBatchForOrder(batches, draft.orderDate || today());
   const [previewStatus, setPreviewStatus] = React.useState("idle");
   const [previewError, setPreviewError] = React.useState("");
   const lastPreviewUrlRef = React.useRef("");
@@ -2091,6 +2123,14 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
     setDraft({
       ...draft,
       id: generateOrderCode(draft, selectedBatch, orders)
+    });
+  };
+  const applyAutoBatch = () => {
+    if (!suggestedBatch) return;
+    setDraft({
+      ...draft,
+      batchId: suggestedBatch.id,
+      id: draft.id ? draft.id : generateOrderCode({ ...draft, batchId: suggestedBatch.id }, suggestedBatch, orders)
     });
   };
 
@@ -2175,7 +2215,17 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
               <button type="button" onClick={generateCurrentOrderCode}>Generate</button>
             </div>
           </Field>
-          <Field label="Ngày tạo"><input type="date" value={draft.orderDate} onChange={(event) => setDraft({ ...draft, orderDate: event.target.value })} /></Field>
+          <Field label="Ngày tạo">
+            <input
+              type="date"
+              value={draft.orderDate}
+              onChange={(event) => {
+                const nextDate = event.target.value;
+                const nextBatch = !draft.batchId ? autoBatchForOrder(batches, nextDate) : null;
+                setDraft({ ...draft, orderDate: nextDate, batchId: draft.batchId || nextBatch?.id || "" });
+              }}
+            />
+          </Field>
           <Field label="Khách hàng">
             <input list="customer-suggestions" value={draft.customer} onChange={(event) => setDraft({ ...draft, customer: event.target.value })} />
           </Field>
@@ -2222,10 +2272,16 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
           <Field label="Số lượng"><input type="number" min="1" value={draft.quantity} onChange={(event) => setDraft({ ...draft, quantity: event.target.value })} /></Field>
           <Field label="Số kg"><input type="number" min="0" step="0.1" value={draft.weightKg ?? 0} onChange={(event) => setDraft({ ...draft, weightKg: event.target.value })} /></Field>
           <Field label="Chuyến bay">
-            <select value={draft.batchId} onChange={(event) => setDraft({ ...draft, batchId: event.target.value })}>
-              <option value="">Chưa xếp đợt</option>
-              {batches.map((batch) => <option value={batch.id} key={batch.id}>{batch.code || batch.id}</option>)}
-            </select>
+            <div className="flight-auto-picker">
+              <select value={draft.batchId} onChange={(event) => setDraft({ ...draft, batchId: event.target.value })}>
+                <option value="">Chưa xếp đợt</option>
+                {sortedFlightBatches(batches).map((batch) => <option value={batch.id} key={batch.id}>{batch.code || batch.id}</option>)}
+              </select>
+              <button type="button" disabled={!suggestedBatch || draft.batchId === suggestedBatch.id} onClick={applyAutoBatch}>
+                Auto chuyến gần nhất
+              </button>
+            </div>
+            {suggestedBatch && <span className="field-hint">Gợi ý: {suggestedBatch.code || suggestedBatch.id} · Cutoff {suggestedBatch.cutoff || "-"} · Về VN {suggestedBatch.arrival || "-"}</span>}
           </Field>
           <div className="flight-link-hint">
             <span>Deadline mua</span>
