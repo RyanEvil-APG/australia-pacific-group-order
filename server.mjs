@@ -394,6 +394,22 @@ function resolveImageUrl(candidates, target) {
   return "";
 }
 
+function chemistPreviewFromUrl(target) {
+  const host = target.hostname.toLowerCase();
+  const match = target.pathname.match(/\/buy\/(\d+)(?:\/([^/?#]+))?/i);
+  if (!host.includes("chemistwarehouse.com.au") || !match) return null;
+  const slug = String(match[2] || "")
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+  return {
+    siteName: "Chemist Warehouse",
+    title: slug || `Chemist Warehouse #${match[1]}`,
+    imageUrl: `https://static.chemistwarehouse.com.au/ams/media/pi/${match[1]}/F2D_800.jpg`
+  };
+}
+
 async function fetchShopifyImage(target, signal) {
   const match = target.pathname.match(/\/products\/([^/?#]+)/i);
   if (!match) return "";
@@ -431,6 +447,7 @@ async function readResponseTextLimited(response, limitBytes = 700_000) {
 
 async function fetchProductPreview(rawUrl) {
   const target = normalizePreviewUrl(rawUrl);
+  const chemistFallback = chemistPreviewFromUrl(target);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 9000);
   try {
@@ -462,6 +479,7 @@ async function fetchProductPreview(rawUrl) {
     const siteName = readMeta(html, ["og:site_name", "application-name"]) || target.hostname.replace(/^www\./, "");
     const imageUrl = resolveImageUrl(
       [
+        { value: chemistFallback?.imageUrl, hint: "chemist warehouse product image" },
         { value: shopifyImage, hint: "shopify product image" },
         { value: readMeta(html, ["og:image:secure_url", "og:image", "twitter:image", "twitter:image:src"]), hint: "social meta image" },
         { value: readJsonLdImage(html), hint: "json ld product image" },
@@ -474,10 +492,21 @@ async function fetchProductPreview(rawUrl) {
     return {
       ok: true,
       url: target.toString(),
-      title,
-      siteName,
+      title: title || chemistFallback?.title || "",
+      siteName: siteName || chemistFallback?.siteName || target.hostname.replace(/^www\./, ""),
       imageUrl
     };
+  } catch (error) {
+    if (chemistFallback?.imageUrl) {
+      return {
+        ok: true,
+        url: target.toString(),
+        title: chemistFallback.title,
+        siteName: chemistFallback.siteName,
+        imageUrl: chemistFallback.imageUrl
+      };
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }

@@ -428,6 +428,26 @@ function productImageSrc(orderOrDraft) {
   return `/api/product-image?${params.toString()}`;
 }
 
+function chemistPreviewFromUrl(rawUrl) {
+  try {
+    const parsed = new URL(String(rawUrl || "").startsWith("www.") ? `https://${rawUrl}` : rawUrl);
+    const match = parsed.pathname.match(/\/buy\/(\d+)(?:\/([^/?#]+))?/i);
+    if (!parsed.hostname.toLowerCase().includes("chemistwarehouse.com.au") || !match) return null;
+    const title = String(match[2] || "")
+      .split("-")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+    return {
+      title,
+      siteName: "Chemist Warehouse",
+      imageUrl: `https://static.chemistwarehouse.com.au/ams/media/pi/${match[1]}/F2D_800.jpg`
+    };
+  } catch {
+    return null;
+  }
+}
+
 function stripDemo(items, demoIds, idKey = "id") {
   if (!Array.isArray(items)) return [];
   return items.filter((item) => !demoIds.has(item[idKey]));
@@ -1787,6 +1807,23 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
       setPreviewStatus(data.imageUrl ? "done" : "error");
       setPreviewError(data.imageUrl ? "" : "Đã nhận shop/link nhưng site này không trả ảnh rõ ràng. Upload ảnh tay để chắc nhất.");
     } catch (error) {
+      const chemistFallback = chemistPreviewFromUrl(url);
+      if (chemistFallback?.imageUrl) {
+        lastPreviewUrlRef.current = url;
+        setDraft((current) => {
+          if (String(current.productUrl || "").trim() !== url) return current;
+          return {
+            ...current,
+            product: current.product || chemistFallback.title || current.product,
+            source: current.source || chemistFallback.siteName,
+            productImageUrl: chemistFallback.imageUrl,
+            productImageSource: "auto"
+          };
+        });
+        setPreviewStatus("done");
+        setPreviewError("");
+        return;
+      }
       setPreviewStatus("error");
       setPreviewError(error.message || "Không lấy được ảnh từ link này.");
     }
