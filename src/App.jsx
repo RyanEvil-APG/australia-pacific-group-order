@@ -1760,7 +1760,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
         body: JSON.stringify({ url })
       });
       const data = await response.json();
-      if (!response.ok || !data.imageUrl) {
+      if (!response.ok) {
         throw new Error(data.error || "Không lấy được ảnh từ link này.");
       }
       lastPreviewUrlRef.current = url;
@@ -1770,11 +1770,12 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
           ...current,
           product: current.product || data.title || current.product,
           source: current.source || data.siteName || current.source,
-          productImageUrl: data.imageUrl,
-          productImageSource: "auto"
+          productImageUrl: data.imageUrl || current.productImageUrl,
+          productImageSource: data.imageUrl ? "auto" : current.productImageSource
         };
       });
-      setPreviewStatus("done");
+      setPreviewStatus(data.imageUrl ? "done" : "error");
+      setPreviewError(data.imageUrl ? "" : "Đã nhận shop/link nhưng site này không trả ảnh rõ ràng. Upload ảnh tay để chắc nhất.");
     } catch (error) {
       setPreviewStatus("error");
       setPreviewError(error.message || "Không lấy được ảnh từ link này.");
@@ -1823,11 +1824,11 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
             </select>
           </Field>
           <Field label="Sản phẩm" wide><input value={draft.product} onChange={(event) => setDraft({ ...draft, product: event.target.value })} /></Field>
-          <Field label="Link sản phẩm" wide>
+          <Field label="Link mua hàng" wide>
             <div className="inline-input-action">
-              <input value={draft.productUrl ?? ""} placeholder="Dán link order / link sản phẩm" onChange={(event) => setDraft({ ...draft, productUrl: event.target.value, productImageSource: draft.productImageSource === "manual" ? "manual" : "" })} />
+              <input value={draft.productUrl ?? ""} placeholder="Dán link mua hàng, app tự nhận shop và ảnh" onChange={(event) => setDraft({ ...draft, productUrl: event.target.value, source: looksLikeProductUrl(event.target.value) ? "" : draft.source, productImageSource: draft.productImageSource === "manual" ? "manual" : "" })} />
               <button type="button" disabled={!looksLikeProductUrl(draft.productUrl) || previewStatus === "loading"} onClick={() => fetchProductPreview(draft.productUrl, true)}>
-                <RefreshCw size={15} /> Lấy ảnh
+                <RefreshCw size={15} /> Đọc link
               </button>
             </div>
           </Field>
@@ -1839,6 +1840,10 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
               <div className="product-media-controls">
                 <strong>{draft.productImageUrl ? (draft.productImageSource === "manual" ? "Ảnh upload tay" : "Ảnh lấy từ link") : "Chưa có ảnh sản phẩm"}</strong>
                 <span>{previewStatus === "loading" ? "Đang đọc link và tìm ảnh đại diện..." : previewError || "Ảnh giúp nhân viên mua hàng kiểm tra đúng mẫu nhanh hơn."}</span>
+                <label className="source-mini-field">
+                  Shop / nền tảng
+                  <input value={draft.source ?? ""} placeholder="Tự nhận từ link hoặc nhập tên shop" onChange={(event) => setDraft({ ...draft, source: event.target.value })} />
+                </label>
                 <div className="media-actions">
                   {draft.productUrl && <a href={draft.productUrl} target="_blank" rel="noreferrer"><Link2 size={15} /> Mở link</a>}
                   <label className="upload-button"><Upload size={15} /> Upload ảnh<input type="file" accept="image/*" onChange={(event) => uploadProductImage(event.target.files?.[0])} /></label>
@@ -1849,7 +1854,6 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
           </Field>
           <Field label="Số lượng"><input type="number" min="1" value={draft.quantity} onChange={(event) => setDraft({ ...draft, quantity: event.target.value })} /></Field>
           <Field label="Số kg"><input type="number" min="0" step="0.1" value={draft.weightKg ?? 0} onChange={(event) => setDraft({ ...draft, weightKg: event.target.value })} /></Field>
-          <Field label="Nguồn mua"><input value={draft.source} onChange={(event) => setDraft({ ...draft, source: event.target.value })} /></Field>
           <Field label="Chuyến bay">
             <select value={draft.batchId} onChange={(event) => setDraft({ ...draft, batchId: event.target.value })}>
               <option value="">Chưa xếp đợt</option>

@@ -269,21 +269,149 @@ function normalizePreviewUrl(rawUrl) {
   return parsed;
 }
 
+function readAttributes(tag = "") {
+  const attrs = {};
+  for (const match of tag.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)) {
+    attrs[match[1].toLowerCase()] = decodeHtml(match[2] ?? match[3] ?? match[4] ?? "");
+  }
+  return attrs;
+}
+
 function readMeta(html, propertyNames = []) {
-  for (const name of propertyNames) {
-    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const propertyFirst = new RegExp(`<meta[^>]+(?:property|name)=["']${escapedName}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i");
-    const contentFirst = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${escapedName}["'][^>]*>`, "i");
-    const match = html.match(propertyFirst) || html.match(contentFirst);
-    if (match?.[1]) return decodeHtml(match[1]);
+  const names = new Set(propertyNames.map((name) => name.toLowerCase()));
+  for (const match of html.matchAll(/<meta\b[^>]*>/gi)) {
+    const attrs = readAttributes(match[0]);
+    const key = String(attrs.property || attrs.name || attrs.itemprop || "").toLowerCase();
+    if (names.has(key) && attrs.content) return attrs.content;
   }
   return "";
 }
 
+function readTitle(html) {
+  return decodeHtml(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "");
+}
+
 function readLinkImage(html) {
-  const relFirst = html.match(/<link[^>]+rel=["'][^"']*(?:image_src|apple-touch-icon|icon)[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>/i);
-  const hrefFirst = html.match(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["'][^"']*(?:image_src|apple-touch-icon|icon)[^"']*["'][^>]*>/i);
-  return decodeHtml(relFirst?.[1] || hrefFirst?.[1] || "");
+  for (const match of html.matchAll(/<link\b[^>]*>/gi)) {
+    const attrs = readAttributes(match[0]);
+    const rel = String(attrs.rel || "").toLowerCase();
+    if (attrs.href && /(?:image_src|apple-touch-icon|icon)/.test(rel)) return attrs.href;
+  }
+  return "";
+}
+
+function imageFromValue(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return imageFromValue(value[0]);
+  if (typeof value === "object") return value.url || value.contentUrl || value.src || "";
+  return "";
+}
+
+function readJsonLdImage(html) {
+  for (const match of html.matchAll(/<script\b[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      const parsed = JSON.parse(decodeHtml(match[1]));
+      const queue = Array.isArray(parsed) ? [...parsed] : [parsed];
+      while (queue.length) {
+        const item = queue.shift();
+        if (!item || typeof item !== "object") continue;
+        const type = Array.isArray(item["@type"]) ? item["@type"].join(" ") : String(item["@type"] || "");
+        const image = imageFromValue(item.image || item.thumbnailUrl || item.primaryImageOfPage);
+        if (image && /product|offer|webpage/i.test(type)) return image;
+        for (const value of Object.values(item)) {
+          if (Array.isArray(value)) queue.push(...value);
+          else if (value && typeof value === "object") queue.push(value);
+        }
+      }
+    } catch {
+      // Ignore malformed JSON-LD blocks from ecommerce templates.
+    }
+  }
+  return "";
+}
+
+function readSrcset(srcset = "") {
+  return String(srcset)
+    .split(",")
+    .map((item) => item.trim().split(/\s+/)[0])
+    .filter(Boolean)
+    .pop() || "";
+}
+
+function readImageTagCandidates(html) {
+  const candidates = [];
+  for (const match of html.matchAll(/<img\b[^>]*>/gi)) {
+    const attrs = readAttributes(match[0]);
+    const value =
+      attrs.src ||
+      attrs["data-src"] ||
+      attrs["data-original"] ||
+      attrs["data-zoom-image"] ||
+      attrs["data-large_image"] ||
+      readSrcset(attrs.srcset || attrs["data-srcset"]);
+    if (value) {
+      candidates.push({
+        value,
+        hint: `${attrs.alt || ""} ${attrs.class || ""} ${attrs.id || ""} ${attrs.loading || ""}`
+      });
+    }
+  }
+  return candidates;
+}
+
+function readGenericImageCandidates(html) {
+  const normalized = html.replace(/\\u002F/g, "/").replace(/\\\//g, "/").replace(/&amp;/g, "&");
+  return [...normalized.matchAll(/https?:\/\/[^"'<>\\\s]+?\.(?:jpe?g|png|webp|avif)(?:\?[^"'<>\\\s]*)?/gi)].map((match) => ({
+    value: match[0],
+    hint: "html image url"
+  }));
+}
+
+function scoreImageCandidate(candidate) {
+  const text = `${candidate.value} ${candidate.hint || ""}`.toLowerCase();
+  let score = 0;
+  if (/\.(jpe?g|png|webp|avif)(?:\?|$)/.test(text)) score += 3;
+  if (/product|goods|media|catalog|cdn|images|large|main|hero|zoom|photo|thumbnail/.test(text)) score += 4;
+  if (/1200|1000|900|800|700|600|500|_xl|_lg|large|main|zoom/.test(text)) score += 2;
+  if (/logo|icon|sprite|favicon|avatar|placeholder|loading|pixel|tracking|payment|visa|mastercard/.test(text)) score -= 8;
+  if (/data:image/i.test(candidate.value)) score -= 4;
+  return score;
+}
+
+function resolveImageUrl(candidates, target) {
+  const sorted = candidates
+    .filter((candidate) => candidate?.value && !String(candidate.value).startsWith("data:"))
+    .sort((a, b) => scoreImageCandidate(b) - scoreImageCandidate(a));
+  for (const candidate of sorted) {
+    try {
+      const resolved = new URL(candidate.value, target);
+      if (["http:", "https:"].includes(resolved.protocol)) return resolved.toString();
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return "";
+}
+
+async function fetchShopifyImage(target, signal) {
+  const match = target.pathname.match(/\/products\/([^/?#]+)/i);
+  if (!match) return "";
+  const productJsonUrl = new URL(`/products/${match[1]}.js`, target.origin);
+  const response = await fetch(productJsonUrl, {
+    signal,
+    headers: {
+      "user-agent": "Mozilla/5.0 AustraliaPacificGroupOrder/1.0",
+      accept: "application/json,text/plain,*/*"
+    }
+  }).catch(() => null);
+  if (!response?.ok) return "";
+  try {
+    const product = await response.json();
+    return imageFromValue(product.featured_image || product.image || product.images);
+  } catch {
+    return "";
+  }
 }
 
 async function readResponseTextLimited(response, limitBytes = 700_000) {
@@ -304,33 +432,45 @@ async function readResponseTextLimited(response, limitBytes = 700_000) {
 async function fetchProductPreview(rawUrl) {
   const target = normalizePreviewUrl(rawUrl);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timeout = setTimeout(() => controller.abort(), 9000);
   try {
+    const shopifyImage = await fetchShopifyImage(target, controller.signal);
     const response = await fetch(target, {
       signal: controller.signal,
       redirect: "follow",
       headers: {
-        "user-agent": "AustraliaPacificGroupOrder/1.0 (+https://australia-pacific-group-order.onrender.com)",
-        accept: "text/html,application/xhtml+xml"
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 AustraliaPacificGroupOrder/1.0",
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "accept-language": "en-AU,en;q=0.9,vi;q=0.8"
       }
     });
     if (!response.ok) throw new Error("preview fetch failed");
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.startsWith("image/")) {
+      return {
+        ok: true,
+        url: target.toString(),
+        title: "",
+        siteName: target.hostname.replace(/^www\./, ""),
+        imageUrl: target.toString()
+      };
+    }
     const html = await readResponseTextLimited(response);
     const title =
       readMeta(html, ["og:title", "twitter:title"]) ||
-      decodeHtml(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "");
+      readTitle(html);
     const siteName = readMeta(html, ["og:site_name", "application-name"]) || target.hostname.replace(/^www\./, "");
-    const imageCandidate =
-      readMeta(html, ["og:image:secure_url", "og:image", "twitter:image", "twitter:image:src"]) || readLinkImage(html);
-    let imageUrl = "";
-    if (imageCandidate) {
-      try {
-        const resolvedImageUrl = new URL(imageCandidate, target);
-        imageUrl = ["http:", "https:"].includes(resolvedImageUrl.protocol) ? resolvedImageUrl.toString() : "";
-      } catch {
-        imageUrl = "";
-      }
-    }
+    const imageUrl = resolveImageUrl(
+      [
+        { value: shopifyImage, hint: "shopify product image" },
+        { value: readMeta(html, ["og:image:secure_url", "og:image", "twitter:image", "twitter:image:src"]), hint: "social meta image" },
+        { value: readJsonLdImage(html), hint: "json ld product image" },
+        { value: readLinkImage(html), hint: "link image" },
+        ...readImageTagCandidates(html),
+        ...readGenericImageCandidates(html)
+      ],
+      target
+    );
     return {
       ok: true,
       url: target.toString(),

@@ -1013,6 +1013,20 @@ tbody tr:hover {
   font-weight: 800;
 }
 
+.source-mini-field {
+  display: grid;
+  gap: 5px;
+  max-width: 360px;
+  color: #5e554a;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.source-mini-field input {
+  min-height: 34px;
+  padding: 0 9px;
+}
+
 .media-actions {
   display: flex;
   align-items: center;
