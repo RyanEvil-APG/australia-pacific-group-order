@@ -329,6 +329,11 @@ p {
   font-weight: 900;
 }
 
+.inline-input-action button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
@@ -445,6 +450,31 @@ tbody tr {
 
 tbody tr:hover {
   background: #fff8e8;
+}
+
+.order-product-cell {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.order-product-thumb {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  color: #8d6a2c;
+  background: #f8f3ea;
+  border: 1px solid rgba(33, 29, 23, 0.09);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.order-product-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .finance-cell strong {
@@ -937,6 +967,81 @@ tbody tr:hover {
   resize: vertical;
 }
 
+.product-media-editor {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px;
+  background: #f8f3ea;
+  border: 1px solid rgba(33, 29, 23, 0.09);
+  border-radius: 8px;
+}
+
+.product-media-preview {
+  display: grid;
+  place-items: center;
+  width: 118px;
+  aspect-ratio: 1;
+  color: #8d6a2c;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.product-media-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.product-media-controls {
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.product-media-controls strong,
+.product-media-controls span {
+  display: block;
+}
+
+.product-media-controls span {
+  color: #746c61;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.media-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.media-actions a,
+.media-actions button,
+.upload-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 10px;
+  color: #211d17;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.12);
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.upload-button input {
+  display: none;
+}
+
 .check-line {
   grid-auto-flow: column;
   justify-content: start;
@@ -1144,6 +1249,22 @@ tbody tr:hover {
   .modal-actions button,
   .batch-actions button,
   .user-footer-actions button {
+    width: 100%;
+  }
+
+  .product-media-editor {
+    grid-template-columns: 86px minmax(0, 1fr);
+  }
+
+  .product-media-preview {
+    width: 86px;
+  }
+
+  .inline-input-action {
+    grid-template-columns: 1fr;
+  }
+
+  .inline-input-action button {
     width: 100%;
   }
 

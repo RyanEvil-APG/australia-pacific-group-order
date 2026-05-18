@@ -9,16 +9,20 @@ import {
   Edit3,
   Filter,
   Gem,
+  Image as ImageIcon,
   LineChart,
+  Link2,
   LockKeyhole,
   LogOut,
   PackageCheck,
   Plane,
   Plus,
+  RefreshCw,
   Search,
   Settings,
   ShieldCheck,
   Trash2,
+  Upload,
   UserRound,
   WalletCards
 } from "lucide-react";
@@ -77,6 +81,9 @@ const emptyOrder = {
   product: "",
   quantity: 1,
   source: "",
+  productUrl: "",
+  productImageUrl: "",
+  productImageSource: "",
   status: "waiting_buy",
   batchId: "",
   supervisorId: "ryan",
@@ -210,7 +217,13 @@ function normalizeOrderStatus(status) {
 }
 
 function normalizeOrder(order) {
-  return { ...order, status: normalizeOrderStatus(order?.status) };
+  return {
+    ...order,
+    productUrl: order?.productUrl ?? "",
+    productImageUrl: order?.productImageUrl ?? "",
+    productImageSource: order?.productImageSource ?? "",
+    status: normalizeOrderStatus(order?.status)
+  };
 }
 
 function normalizeOrders(items) {
@@ -385,6 +398,24 @@ function stableJson(value) {
   } catch {
     return "";
   }
+}
+
+function looksLikeProductUrl(value) {
+  const text = String(value || "").trim();
+  return /^https?:\/\//i.test(text) || /^www\./i.test(text);
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      resolve("");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 }
 
 function stripDemo(items, demoIds, idKey = "id") {
@@ -570,7 +601,7 @@ function App() {
   const filteredOrders = React.useMemo(() => {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
     return orders.filter((order) => {
-      const text = `${order.id} ${order.customer} ${order.phone} ${order.product} ${order.source}`.toLowerCase();
+      const text = `${order.id} ${order.customer} ${order.phone} ${order.product} ${order.source} ${order.productUrl}`.toLowerCase();
       const matchesQuery = text.includes(normalizedQuery);
       const matchesStatus = statusFilter === "all" || normalizeOrderStatus(order.status) === statusFilter;
       const matchesBatch = batchFilter === "all" || order.batchId === batchFilter;
@@ -1020,6 +1051,7 @@ function App() {
           accounts={accounts}
           customers={customers}
           orders={orders}
+          sessionToken={sessionToken}
           save={saveOrder}
           remove={deleteOrder}
           close={() => setModal(null)}
@@ -1200,7 +1232,7 @@ function OverviewView(props) {
                   <tr key={order.id} onClick={() => openOrder(order)}>
                     <td data-label="Mã đơn"><strong>{order.id}</strong></td>
                     <td data-label="Khách">{order.customer}</td>
-                    <td data-label="Sản phẩm">{order.product}<span>SL: {order.quantity} · {money(order.weightKg)}kg</span></td>
+                    <td data-label="Sản phẩm"><ProductCell order={order} /></td>
                     <td data-label="Phụ phí">{vnd(order.extraFeeVnd)}<span>{order.extraFeeNote}</span></td>
                     <td data-label="Tổng chi phí">{vnd(finance.totalCostVnd)}<span>Cọc {vnd(finance.depositVnd)}</span></td>
                     <td data-label="Còn phải thu"><span className="money-due">{vnd(finance.remainingVnd)}</span></td>
@@ -1237,6 +1269,20 @@ function OrdersView(props) {
   );
 }
 
+function ProductCell({ order }) {
+  return (
+    <div className="order-product-cell">
+      <div className="order-product-thumb">
+        {order.productImageUrl ? <img src={order.productImageUrl} alt={order.product || "Product"} /> : <ImageIcon size={18} />}
+      </div>
+      <div>
+        <strong>{order.product || "Chưa nhập sản phẩm"}</strong>
+        <span>SL: {order.quantity} · {money(order.weightKg)}kg</span>
+      </div>
+    </div>
+  );
+}
+
 function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
   const rowLimit = compact ? 10 : 120;
   const visibleOrders = orders.slice(0, rowLimit);
@@ -1261,7 +1307,7 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
               <tr key={order.id} onClick={() => openOrder(order)}>
                 <td data-label="Mã đơn"><strong>{order.id}</strong><span>{order.orderDate}</span><span>{order.source}</span></td>
                 <td data-label="Khách">{order.customer}<span>{order.phone}</span></td>
-                <td data-label="Sản phẩm">{order.product}<span>SL: {order.quantity} · {money(order.weightKg)}kg</span></td>
+                <td data-label="Sản phẩm"><ProductCell order={order} /></td>
                 <td data-label="Tình trạng"><span className={`status-chip ${normalizeOrderStatus(order.status)}`}>{statusLabel(order.status)}</span></td>
                 <td data-label="Chuyến bay">
                   {batch?.code || "Chưa xếp"}
@@ -1685,15 +1731,72 @@ function Field({ label, children, wide }) {
   );
 }
 
-function OrderModal({ draft, setDraft, batches, accounts, customers, orders, save, remove, close }) {
+function OrderModal({ draft, setDraft, batches, accounts, customers, orders, sessionToken, save, remove, close }) {
   const finance = orderFinance(draft);
   const selectedBatch = batches.find((batch) => batch.id === draft.batchId);
+  const [previewStatus, setPreviewStatus] = React.useState("idle");
+  const [previewError, setPreviewError] = React.useState("");
+  const lastPreviewUrlRef = React.useRef("");
   const generateCurrentOrderCode = () => {
     setDraft({
       ...draft,
       id: generateOrderCode(draft, selectedBatch, orders)
     });
   };
+
+  async function fetchProductPreview(urlValue = draft.productUrl, force = false) {
+    const url = String(urlValue || "").trim();
+    if (!sessionToken || !looksLikeProductUrl(url)) return;
+    if (!force && draft.productImageSource === "manual") return;
+    setPreviewStatus("loading");
+    setPreviewError("");
+    try {
+      const response = await fetch("/api/product-preview", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionToken}`
+        },
+        body: JSON.stringify({ url })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.imageUrl) {
+        throw new Error(data.error || "Không lấy được ảnh từ link này.");
+      }
+      lastPreviewUrlRef.current = url;
+      setDraft((current) => {
+        if (String(current.productUrl || "").trim() !== url) return current;
+        return {
+          ...current,
+          product: current.product || data.title || current.product,
+          source: current.source || data.siteName || current.source,
+          productImageUrl: data.imageUrl,
+          productImageSource: "auto"
+        };
+      });
+      setPreviewStatus("done");
+    } catch (error) {
+      setPreviewStatus("error");
+      setPreviewError(error.message || "Không lấy được ảnh từ link này.");
+    }
+  }
+
+  async function uploadProductImage(file) {
+    if (!file) return;
+    const dataUrl = await fileToDataUrl(file);
+    setDraft((current) => ({ ...current, productImageUrl: dataUrl, productImageSource: "manual" }));
+    setPreviewStatus("done");
+    setPreviewError("");
+  }
+
+  React.useEffect(() => {
+    const url = String(draft.productUrl || "").trim();
+    if (!url || !looksLikeProductUrl(url) || draft.productImageSource === "manual") return undefined;
+    if (lastPreviewUrlRef.current === url && draft.productImageUrl) return undefined;
+    const timeout = window.setTimeout(() => fetchProductPreview(url, false), 800);
+    return () => window.clearTimeout(timeout);
+  }, [draft.productUrl, sessionToken]);
+
   return (
     <ModalShell title="Sửa / thêm đơn hàng" eyebrow="Order management" close={close}>
       <form onSubmit={save}>
@@ -1720,6 +1823,30 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, sav
             </select>
           </Field>
           <Field label="Sản phẩm" wide><input value={draft.product} onChange={(event) => setDraft({ ...draft, product: event.target.value })} /></Field>
+          <Field label="Link sản phẩm" wide>
+            <div className="inline-input-action">
+              <input value={draft.productUrl ?? ""} placeholder="Dán link order / link sản phẩm" onChange={(event) => setDraft({ ...draft, productUrl: event.target.value, productImageSource: draft.productImageSource === "manual" ? "manual" : "" })} />
+              <button type="button" disabled={!looksLikeProductUrl(draft.productUrl) || previewStatus === "loading"} onClick={() => fetchProductPreview(draft.productUrl, true)}>
+                <RefreshCw size={15} /> Lấy ảnh
+              </button>
+            </div>
+          </Field>
+          <Field label="Ảnh sản phẩm" wide>
+            <div className="product-media-editor">
+              <div className="product-media-preview">
+                {draft.productImageUrl ? <img src={draft.productImageUrl} alt={draft.product || "Product"} /> : <ImageIcon size={28} />}
+              </div>
+              <div className="product-media-controls">
+                <strong>{draft.productImageUrl ? (draft.productImageSource === "manual" ? "Ảnh upload tay" : "Ảnh lấy từ link") : "Chưa có ảnh sản phẩm"}</strong>
+                <span>{previewStatus === "loading" ? "Đang đọc link và tìm ảnh đại diện..." : previewError || "Ảnh giúp nhân viên mua hàng kiểm tra đúng mẫu nhanh hơn."}</span>
+                <div className="media-actions">
+                  {draft.productUrl && <a href={draft.productUrl} target="_blank" rel="noreferrer"><Link2 size={15} /> Mở link</a>}
+                  <label className="upload-button"><Upload size={15} /> Upload ảnh<input type="file" accept="image/*" onChange={(event) => uploadProductImage(event.target.files?.[0])} /></label>
+                  {draft.productImageUrl && <button type="button" onClick={() => setDraft({ ...draft, productImageUrl: "", productImageSource: "" })}>Bỏ ảnh</button>}
+                </div>
+              </div>
+            </div>
+          </Field>
           <Field label="Số lượng"><input type="number" min="1" value={draft.quantity} onChange={(event) => setDraft({ ...draft, quantity: event.target.value })} /></Field>
           <Field label="Số kg"><input type="number" min="0" step="0.1" value={draft.weightKg ?? 0} onChange={(event) => setDraft({ ...draft, weightKg: event.target.value })} /></Field>
           <Field label="Nguồn mua"><input value={draft.source} onChange={(event) => setDraft({ ...draft, source: event.target.value })} /></Field>

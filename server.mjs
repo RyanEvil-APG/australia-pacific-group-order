@@ -236,6 +236,113 @@ function mergeClientState(serverState, clientState, account) {
   };
 }
 
+function decodeHtml(value = "") {
+  return String(value)
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .trim();
+}
+
+function normalizePreviewUrl(rawUrl) {
+  const value = String(rawUrl || "").trim();
+  const withProtocol = value.startsWith("www.") ? `https://${value}` : value;
+  const parsed = new URL(withProtocol);
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw new Error("unsupported url");
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error("url credentials are not allowed");
+  }
+  const host = parsed.hostname.toLowerCase();
+  const blockedHosts = ["localhost", "127.0.0.1", "0.0.0.0", "::1"];
+  if (
+    blockedHosts.includes(host) ||
+    host.startsWith("10.") ||
+    host.startsWith("192.168.") ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+  ) {
+    throw new Error("private urls are not allowed");
+  }
+  return parsed;
+}
+
+function readMeta(html, propertyNames = []) {
+  for (const name of propertyNames) {
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const propertyFirst = new RegExp(`<meta[^>]+(?:property|name)=["']${escapedName}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i");
+    const contentFirst = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${escapedName}["'][^>]*>`, "i");
+    const match = html.match(propertyFirst) || html.match(contentFirst);
+    if (match?.[1]) return decodeHtml(match[1]);
+  }
+  return "";
+}
+
+function readLinkImage(html) {
+  const relFirst = html.match(/<link[^>]+rel=["'][^"']*(?:image_src|apple-touch-icon|icon)[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>/i);
+  const hrefFirst = html.match(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["'][^"']*(?:image_src|apple-touch-icon|icon)[^"']*["'][^>]*>/i);
+  return decodeHtml(relFirst?.[1] || hrefFirst?.[1] || "");
+}
+
+async function readResponseTextLimited(response, limitBytes = 700_000) {
+  const reader = response.body?.getReader?.();
+  if (!reader) return response.text();
+  const chunks = [];
+  let size = 0;
+  while (size < limitBytes) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    chunks.push(value);
+  }
+  await reader.cancel().catch(() => {});
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+async function fetchProductPreview(rawUrl) {
+  const target = normalizePreviewUrl(rawUrl);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(target, {
+      signal: controller.signal,
+      redirect: "follow",
+      headers: {
+        "user-agent": "AustraliaPacificGroupOrder/1.0 (+https://australia-pacific-group-order.onrender.com)",
+        accept: "text/html,application/xhtml+xml"
+      }
+    });
+    if (!response.ok) throw new Error("preview fetch failed");
+    const html = await readResponseTextLimited(response);
+    const title =
+      readMeta(html, ["og:title", "twitter:title"]) ||
+      decodeHtml(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "");
+    const siteName = readMeta(html, ["og:site_name", "application-name"]) || target.hostname.replace(/^www\./, "");
+    const imageCandidate =
+      readMeta(html, ["og:image:secure_url", "og:image", "twitter:image", "twitter:image:src"]) || readLinkImage(html);
+    let imageUrl = "";
+    if (imageCandidate) {
+      try {
+        const resolvedImageUrl = new URL(imageCandidate, target);
+        imageUrl = ["http:", "https:"].includes(resolvedImageUrl.protocol) ? resolvedImageUrl.toString() : "";
+      } catch {
+        imageUrl = "";
+      }
+    }
+    return {
+      ok: true,
+      url: target.toString(),
+      title,
+      siteName,
+      imageUrl
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const app = express();
 app.use(express.json({ limit: "5mb" }));
 app.use("/api", (_req, res, next) => {
@@ -302,6 +409,24 @@ app.put("/api/state", async (req, res) => {
   await writeState(nextState);
 
   return res.json({ state: stateForAccount(nextState, account) });
+});
+
+app.post("/api/product-preview", async (req, res) => {
+  const session = sessionFromRequest(req);
+  if (!session) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const preview = await fetchProductPreview(req.body?.url);
+    return res.json(preview);
+  } catch (error) {
+    return res.status(422).json({
+      ok: false,
+      error: "Không lấy được ảnh từ link này. Upload ảnh tay hoặc thử link sản phẩm khác.",
+      detail: error.message
+    });
+  }
 });
 
 app.post("/api/logout", (req, res) => {
