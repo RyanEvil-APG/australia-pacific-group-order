@@ -483,6 +483,35 @@ async function fetchProductPreview(rawUrl) {
   }
 }
 
+async function fetchImageForProxy(rawUrl, rawReferer) {
+  const target = normalizePreviewUrl(rawUrl);
+  const referer = rawReferer ? normalizePreviewUrl(rawReferer).toString() : target.origin;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 9000);
+  try {
+    const response = await fetch(target, {
+      signal: controller.signal,
+      redirect: "follow",
+      headers: {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 AustraliaPacificGroupOrder/1.0",
+        accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        referer
+      }
+    });
+    const contentType = response.headers.get("content-type") || "";
+    if (!response.ok || !contentType.startsWith("image/")) {
+      throw new Error("image fetch failed");
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.byteLength > 5 * 1024 * 1024) {
+      throw new Error("image too large");
+    }
+    return { buffer, contentType };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const app = express();
 app.use(express.json({ limit: "5mb" }));
 app.use("/api", (_req, res, next) => {
@@ -566,6 +595,17 @@ app.post("/api/product-preview", async (req, res) => {
       error: "Không lấy được ảnh từ link này. Upload ảnh tay hoặc thử link sản phẩm khác.",
       detail: error.message
     });
+  }
+});
+
+app.get("/api/product-image", async (req, res) => {
+  try {
+    const image = await fetchImageForProxy(req.query.url, req.query.referer);
+    res.set("Content-Type", image.contentType);
+    res.set("Cache-Control", "public, max-age=86400");
+    return res.send(image.buffer);
+  } catch {
+    return res.status(404).send("");
   }
 });
 

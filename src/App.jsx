@@ -418,6 +418,16 @@ function fileToDataUrl(file) {
   });
 }
 
+function productImageSrc(orderOrDraft) {
+  const rawUrl = String(orderOrDraft?.productImageUrl || "").trim();
+  if (!rawUrl || rawUrl.startsWith("data:") || rawUrl.startsWith("/api/product-image")) return rawUrl;
+  if (!/^https?:\/\//i.test(rawUrl)) return rawUrl;
+  const params = new URLSearchParams({ url: rawUrl });
+  const referer = String(orderOrDraft?.productUrl || "").trim();
+  if (looksLikeProductUrl(referer)) params.set("referer", referer);
+  return `/api/product-image?${params.toString()}`;
+}
+
 function stripDemo(items, demoIds, idKey = "id") {
   if (!Array.isArray(items)) return [];
   return items.filter((item) => !demoIds.has(item[idKey]));
@@ -1273,7 +1283,7 @@ function ProductCell({ order }) {
   return (
     <div className="order-product-cell">
       <div className="order-product-thumb">
-        {order.productImageUrl ? <img src={order.productImageUrl} alt={order.product || "Product"} /> : <ImageIcon size={18} />}
+        {order.productImageUrl ? <img src={productImageSrc(order)} alt={order.product || "Product"} /> : <ImageIcon size={18} />}
       </div>
       <div>
         <strong>{order.product || "Chưa nhập sản phẩm"}</strong>
@@ -1835,7 +1845,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
           <Field label="Ảnh sản phẩm" wide>
             <div className="product-media-editor">
               <div className="product-media-preview">
-                {draft.productImageUrl ? <img src={draft.productImageUrl} alt={draft.product || "Product"} /> : <ImageIcon size={28} />}
+                {draft.productImageUrl ? <img src={productImageSrc(draft)} alt={draft.product || "Product"} /> : <ImageIcon size={28} />}
               </div>
               <div className="product-media-controls">
                 <strong>{draft.productImageUrl ? (draft.productImageSource === "manual" ? "Ảnh upload tay" : "Ảnh lấy từ link") : "Chưa có ảnh sản phẩm"}</strong>
