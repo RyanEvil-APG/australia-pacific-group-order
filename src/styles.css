@@ -819,6 +819,47 @@ tbody tr:hover {
   font-weight: 900;
 }
 
+.batch-modal-checklist {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px;
+  background: #fffdf8;
+  border: 1px solid rgba(33, 29, 23, 0.09);
+  border-radius: 8px;
+}
+
+.batch-modal-checklist-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.batch-modal-checklist-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.batch-modal-checklist-head em {
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.batch-modal-checklist-head em.warn {
+  color: #7a202b;
+  background: #fff0f1;
+}
+
+.batch-modal-checklist-head em.ok {
+  color: #0b7658;
+  background: #e9f8f2;
+}
+
 .flight-checklist-panel {
   overflow: hidden;
 }
@@ -903,6 +944,10 @@ tbody tr:hover {
 .flight-order-list {
   display: grid;
   gap: 8px;
+}
+
+.flight-order-list.compact .flight-order-item {
+  grid-template-columns: minmax(190px, 1fr) minmax(150px, 0.7fr) auto;
 }
 
 .flight-order-item {

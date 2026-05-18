@@ -1091,7 +1091,18 @@ function App() {
           close={() => setModal(null)}
         />
       )}
-      {modal === "batch" && <BatchModal draft={draft} setDraft={setDraft} save={saveBatch} remove={deleteBatch} close={() => setModal(null)} />}
+      {modal === "batch" && (
+        <BatchModal
+          draft={draft}
+          setDraft={setDraft}
+          orders={orders}
+          openOrder={openOrder}
+          updateOrderStatus={updateOrderStatus}
+          save={saveBatch}
+          remove={deleteBatch}
+          close={() => setModal(null)}
+        />
+      )}
       {modal === "stock" && <StockModal draft={draft} setDraft={setDraft} accounts={accounts} save={saveStock} remove={deleteStock} close={() => setModal(null)} />}
       {modal === "transaction" && (
         <TransactionModal draft={draft} setDraft={setDraft} orders={orders} batches={batches} save={saveTransaction} remove={deleteTransaction} close={() => setModal(null)} />
@@ -1699,23 +1710,8 @@ function FlightChecklistPanel({ batches, orders, unassignedOrders, openOrder, up
               </div>
               <div className="flight-order-list">
                 {actionableOrders.slice(0, 12).map((order) => {
-                  const status = normalizeOrderStatus(order.status);
                   return (
-                    <div className="flight-order-item" key={order.id} onClick={() => openOrder(order)}>
-                      <ProductCell order={order} />
-                      <div className="flight-order-meta">
-                        <strong>{order.id}</strong>
-                        <span>{order.customer || "-"} · SL {order.quantity} · {money(order.weightKg)}kg</span>
-                        <span className={`status-chip ${status}`}>{statusLabel(status)}</span>
-                      </div>
-                      <div className="flight-order-actions" onClick={(event) => event.stopPropagation()}>
-                        {status === "waiting_buy" && <button type="button" onClick={() => updateOrderStatus(order.id, "purchased")}>Đã mua</button>}
-                        {status === "purchased" && <button type="button" onClick={() => updateOrderStatus(order.id, "sent_vn")}>Đã gửi VN</button>}
-                        {status === "sent_vn" && <button type="button" onClick={() => updateOrderStatus(order.id, "received_vn")}>Đã nhận VN</button>}
-                        {status === "received_vn" && <button type="button" onClick={() => updateOrderStatus(order.id, "delivered")}>Đã giao</button>}
-                        <button type="button" onClick={() => openOrder(order)}>Sửa</button>
-                      </div>
-                    </div>
+                    <FlightOrderRow order={order} openOrder={openOrder} updateOrderStatus={updateOrderStatus} key={order.id} />
                   );
                 })}
                 {!actionableOrders.length && <EmptyState title="Không còn đơn cần xử lý" body="Các đơn trong chuyến này đã giao/hủy hoặc chưa có đơn nào được xếp vào chuyến." />}
@@ -1727,6 +1723,34 @@ function FlightChecklistPanel({ batches, orders, unassignedOrders, openOrder, up
         {!groupedBatches.length && <EmptyState title="Chưa có checklist chuyến" body="Tạo chuyến bay và gán đơn vào chuyến để thấy danh sách hàng cần mua/gửi/nhận." />}
       </div>
     </section>
+  );
+}
+
+function FlightOrderQuickActions({ order, openOrder, updateOrderStatus }) {
+  const status = normalizeOrderStatus(order.status);
+  return (
+    <div className="flight-order-actions" onClick={(event) => event.stopPropagation()}>
+      {status === "waiting_buy" && <button type="button" onClick={() => updateOrderStatus(order.id, "purchased")}>Đã mua</button>}
+      {status === "purchased" && <button type="button" onClick={() => updateOrderStatus(order.id, "sent_vn")}>Đã gửi VN</button>}
+      {status === "sent_vn" && <button type="button" onClick={() => updateOrderStatus(order.id, "received_vn")}>Đã nhận VN</button>}
+      {status === "received_vn" && <button type="button" onClick={() => updateOrderStatus(order.id, "delivered")}>Đã giao</button>}
+      <button type="button" onClick={() => openOrder(order)}>Sửa</button>
+    </div>
+  );
+}
+
+function FlightOrderRow({ order, openOrder, updateOrderStatus }) {
+  const status = normalizeOrderStatus(order.status);
+  return (
+    <div className="flight-order-item" onClick={() => openOrder(order)}>
+      <ProductCell order={order} />
+      <div className="flight-order-meta">
+        <strong>{order.id}</strong>
+        <span>{order.customer || "-"} · SL {order.quantity} · {money(order.weightKg)}kg</span>
+        <span className={`status-chip ${status}`}>{statusLabel(status)}</span>
+      </div>
+      <FlightOrderQuickActions order={order} openOrder={openOrder} updateOrderStatus={updateOrderStatus} />
+    </div>
   );
 }
 
@@ -2098,7 +2122,10 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
   );
 }
 
-function BatchModal({ draft, setDraft, save, remove, close }) {
+function BatchModal({ draft, setDraft, orders, openOrder, updateOrderStatus, save, remove, close }) {
+  const batchOrders = orders.filter((order) => order.batchId === draft.id);
+  const progress = flightOrderProgress(batchOrders);
+  const activeBatchOrders = batchOrders.filter((order) => !["delivered", "cancelled"].includes(normalizeOrderStatus(order.status)));
   return (
     <ModalShell title="Sửa / thêm chuyến bay" eyebrow="Flight management" close={close}>
       <form onSubmit={save}>
@@ -2117,6 +2144,30 @@ function BatchModal({ draft, setDraft, save, remove, close }) {
           <Field label="Cước bay AUD"><input type="number" value={draft.freightAud} onChange={(event) => setDraft({ ...draft, freightAud: event.target.value })} /></Field>
           <Field label="Note" wide><textarea value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} /></Field>
         </div>
+        <section className="batch-modal-checklist">
+          <div className="batch-modal-checklist-head">
+            <div>
+              <span className="eyebrow">Flight orders</span>
+              <h3>Hàng trong chuyến này</h3>
+            </div>
+            <em className={progress.waitingBuy ? "warn" : "ok"}>{progress.waitingBuy ? `Còn thiếu/chờ mua ${progress.waitingBuy}` : "Không thiếu hàng"}</em>
+          </div>
+          <div className="flight-checklist-stats">
+            <span>Tổng đơn <strong>{progress.total}</strong></span>
+            <span>Chờ mua <strong>{progress.waitingBuy}</strong></span>
+            <span>Đã mua <strong>{progress.purchased}</strong></span>
+            <span>Đã gửi/nhận <strong>{progress.sentVn + progress.receivedVn}</strong></span>
+          </div>
+          <div className="flight-order-list compact">
+            {activeBatchOrders.slice(0, 10).map((order) => (
+              <FlightOrderRow order={order} openOrder={openOrder} updateOrderStatus={updateOrderStatus} key={order.id} />
+            ))}
+            {!activeBatchOrders.length && (
+              <EmptyState title="Chưa có đơn cần xử lý trong chuyến" body="Vào Đơn hàng, mở từng đơn và chọn chuyến bay này để gom hàng vào đúng đợt." />
+            )}
+            {activeBatchOrders.length > 10 && <EmptyState title={`Đang hiện 10/${activeBatchOrders.length} đơn`} body="Vào tab Chuyến bay để xem checklist đầy đủ hơn." />}
+          </div>
+        </section>
         <div className="modal-actions">
           <button className="ghost-button" type="button" onClick={close}>Hủy</button>
           <button className="danger-button" type="button" onClick={() => remove(draft.id)}>Xóa</button>
