@@ -9,8 +9,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 5288);
 const STATE_ID = "production";
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const STATE_CACHE_TTL_MS = 12 * 1000;
 const localDataDir = path.join(__dirname, "data");
 const localDataPath = path.join(localDataDir, "apg-state.json");
+let cachedState = null;
+let cachedStateAt = 0;
 
 const defaultState = {
   accounts: [
@@ -139,21 +142,36 @@ async function writeLocalState(state) {
 }
 
 async function readState() {
+  if (cachedState && Date.now() - cachedStateAt < STATE_CACHE_TTL_MS) {
+    return cachedState;
+  }
+
   if (!supabase) {
-    return readLocalState();
+    const state = await readLocalState();
+    cachedState = state;
+    cachedStateAt = Date.now();
+    return state;
   }
 
   const { data, error } = await supabase.from("apg_app_state").select("data").eq("id", STATE_ID).maybeSingle();
   if (error) {
     console.error("Supabase read failed:", error.message);
-    return readLocalState();
+    const state = await readLocalState();
+    cachedState = state;
+    cachedStateAt = Date.now();
+    return state;
   }
 
-  return mergeState(data?.data ?? defaultState);
+  const state = mergeState(data?.data ?? defaultState);
+  cachedState = state;
+  cachedStateAt = Date.now();
+  return state;
 }
 
 async function writeState(state) {
   const nextState = mergeState(state);
+  cachedState = nextState;
+  cachedStateAt = Date.now();
   await writeLocalState(nextState);
 
   if (!supabase) {
@@ -220,6 +238,10 @@ function mergeClientState(serverState, clientState, account) {
 
 const app = express();
 app.use(express.json({ limit: "5mb" }));
+app.use("/api", (_req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
 
 app.get("/api/health", async (_req, res) => {
   res.json({ ok: true, storage: supabase ? "supabase" : "local-file" });
@@ -292,8 +314,20 @@ app.post("/api/logout", (req, res) => {
   res.json({ ok: true });
 });
 
-app.use(express.static(path.join(__dirname, "dist")));
+app.use(
+  "/assets",
+  express.static(path.join(__dirname, "dist", "assets"), {
+    immutable: true,
+    maxAge: "1y"
+  })
+);
+app.use(
+  express.static(path.join(__dirname, "dist"), {
+    maxAge: "1h"
+  })
+);
 app.get(/.*/, (_req, res) => {
+  res.set("Cache-Control", "no-cache");
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 

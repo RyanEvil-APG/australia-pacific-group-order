@@ -379,6 +379,14 @@ function useStoredState(key, fallback, normalize) {
   return [state, setState];
 }
 
+function stableJson(value) {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "";
+  }
+}
+
 function stripDemo(items, demoIds, idKey = "id") {
   if (!Array.isArray(items)) return [];
   return items.filter((item) => !demoIds.has(item[idKey]));
@@ -451,6 +459,9 @@ function App() {
   const [modal, setModal] = React.useState(null);
   const [draft, setDraft] = React.useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const deferredQuery = React.useDeferredValue(query);
+  const hydratedFromServerRef = React.useRef(false);
+  const lastSyncedPayloadRef = React.useRef("");
 
   const activeAccount = accounts.find((account) => account.id === currentAccountId) ?? accounts[0];
   const canSeeProfit = activeAccount?.role === "admin" || activeAccount?.role === "general_manager";
@@ -478,6 +489,7 @@ function App() {
   function applyServerState(serverState) {
     if (!serverState) return;
     const clean = cleanServerState(serverState);
+    hydratedFromServerRef.current = false;
     if (Array.isArray(clean.accounts) && clean.accounts.length) setAccounts(clean.accounts);
     if (Array.isArray(clean.orders)) setOrders(clean.orders);
     if (Array.isArray(clean.customers)) setCustomers(clean.customers);
@@ -485,6 +497,10 @@ function App() {
     if (Array.isArray(clean.inventory)) setInventory(clean.inventory);
     if (Array.isArray(clean.transactions)) setTransactions(clean.transactions);
     if (Array.isArray(clean.tasks)) setTasks(clean.tasks);
+    lastSyncedPayloadRef.current = stableJson({ accounts: clean.accounts, orders: clean.orders, customers: clean.customers, batches: clean.batches, inventory: clean.inventory, transactions: clean.transactions, tasks: clean.tasks });
+    window.setTimeout(() => {
+      hydratedFromServerRef.current = true;
+    }, 0);
   }
 
   React.useEffect(() => {
@@ -504,6 +520,7 @@ function App() {
       .catch((error) => {
         if (ignore) return;
         setSyncStatus("local");
+        hydratedFromServerRef.current = true;
         if (error.message === "session expired") {
           setSessionToken(null);
           setCurrentAccountId(null);
@@ -517,18 +534,24 @@ function App() {
 
   React.useEffect(() => {
     if (!sessionToken || !currentAccountId) return;
+    if (!hydratedFromServerRef.current) return;
+    const payload = { accounts, orders, customers, batches, inventory, transactions, tasks };
+    const payloadText = stableJson(payload);
+    if (!payloadText || payloadText === lastSyncedPayloadRef.current) return;
     const timeout = window.setTimeout(() => {
+      setSyncStatus("syncing");
       fetch("/api/state", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${sessionToken}`
         },
-        body: JSON.stringify({ state: { accounts, orders, customers, batches, inventory, transactions, tasks } })
+        body: JSON.stringify({ state: payload })
       })
         .then((response) => {
           if (response.status === 401) throw new Error("session expired");
           if (!response.ok) throw new Error("state sync failed");
+          lastSyncedPayloadRef.current = payloadText;
           setSyncStatus("cloud");
         })
         .catch((error) => {
@@ -539,22 +562,23 @@ function App() {
             setLoginError("Phiên đăng nhập đã hết hạn, đăng nhập lại để sync cloud.");
           }
         });
-    }, 500);
+    }, 1500);
 
     return () => window.clearTimeout(timeout);
   }, [sessionToken, currentAccountId, accounts, orders, customers, batches, inventory, transactions, tasks]);
 
   const filteredOrders = React.useMemo(() => {
+    const normalizedQuery = deferredQuery.trim().toLowerCase();
     return orders.filter((order) => {
       const text = `${order.id} ${order.customer} ${order.phone} ${order.product} ${order.source}`.toLowerCase();
-      const matchesQuery = text.includes(query.trim().toLowerCase());
+      const matchesQuery = text.includes(normalizedQuery);
       const matchesStatus = statusFilter === "all" || normalizeOrderStatus(order.status) === statusFilter;
       const matchesBatch = batchFilter === "all" || order.batchId === batchFilter;
       const matchesFrom = !dateFrom || String(order.orderDate || "") >= dateFrom;
       const matchesTo = !dateTo || String(order.orderDate || "") <= dateTo;
       return matchesQuery && matchesStatus && matchesBatch && matchesFrom && matchesTo;
     });
-  }, [orders, query, statusFilter, batchFilter, dateFrom, dateTo]);
+  }, [orders, deferredQuery, statusFilter, batchFilter, dateFrom, dateTo]);
 
   const totals = React.useMemo(() => {
     return orders.reduce(
@@ -899,7 +923,7 @@ function App() {
       <main className="workspace">
         <header className="topbar">
           <div>
-            <span className="eyebrow">{syncStatus === "cloud" ? "Cloud sync" : "Local mode"}</span>
+            <span className="eyebrow">{syncStatus === "cloud" ? "Cloud sync" : syncStatus === "syncing" ? "Đang sync" : "Local mode"}</span>
             <h1>{navItems.find((item) => item.id === activeView)?.label ?? "Tổng quan"}</h1>
           </div>
           <div className="top-actions">
@@ -1170,7 +1194,7 @@ function OverviewView(props) {
               </tr>
             </thead>
             <tbody>
-              {filteredOrders.map((order) => {
+              {filteredOrders.slice(0, 80).map((order) => {
                 const finance = orderFinance(order);
                 return (
                   <tr key={order.id} onClick={() => openOrder(order)}>
@@ -1185,6 +1209,7 @@ function OverviewView(props) {
               })}
             </tbody>
           </table>
+          {filteredOrders.length > 80 && <EmptyState title={`Đang hiện 80/${filteredOrders.length} dòng phụ phí`} body="Lọc theo chuyến bay hoặc thời gian để bảng nhẹ và dễ nhìn hơn." />}
         </div>
       </section>
     </div>
@@ -1213,6 +1238,8 @@ function OrdersView(props) {
 }
 
 function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
+  const rowLimit = compact ? 10 : 120;
+  const visibleOrders = orders.slice(0, rowLimit);
   return (
     <div className="table-wrap">
       <table>
@@ -1227,7 +1254,7 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
           </tr>
         </thead>
         <tbody>
-          {orders.map((order) => {
+          {visibleOrders.map((order) => {
             const finance = orderFinance(order);
             const batch = batches.find((item) => item.id === order.batchId);
             return (
@@ -1253,6 +1280,7 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
           })}
         </tbody>
       </table>
+      {orders.length > rowLimit && <EmptyState title={`Đang hiện ${rowLimit}/${orders.length} đơn`} body="Dùng tìm kiếm, lọc tình trạng hoặc lọc thời gian để mở đúng nhóm đơn cần xử lý nhanh hơn." />}
       {!orders.length && <EmptyState title="Chưa có đơn hàng" body="Bấm Thêm đơn để nhập đơn thật. Dữ liệu demo đã được bỏ." />}
     </div>
   );
