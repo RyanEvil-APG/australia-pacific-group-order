@@ -156,7 +156,7 @@ const emptyTask = {
 const navItems = [
   { id: "overview", label: "Tổng quan", icon: LineChart },
   { id: "orders", label: "Đơn hàng", icon: ClipboardList },
-  { id: "buying", label: "Buying Checklist", icon: PackageCheck },
+  { id: "buying", label: "Mua hàng & Packing", icon: PackageCheck },
   { id: "flights", label: "Chuyến bay", icon: Plane },
   { id: "stock", label: "Hàng có sẵn", icon: Boxes },
   { id: "customers", label: "Khách hàng", icon: UserRound },
@@ -1369,8 +1369,8 @@ function OrdersView(props) {
       <div className="panel">
         <div className="panel-title">
           <div>
-            <span className="eyebrow">CRUD orders</span>
-            <h2>Đơn hàng</h2>
+            <span className="eyebrow">Order records</span>
+            <h2>Hồ sơ đơn hàng</h2>
           </div>
           <button className="primary-button" onClick={() => props.openOrder()}>
             <Plus size={17} />
@@ -1575,6 +1575,13 @@ function sortedFlightBatches(batches) {
   return [...batches].sort((a, b) => String(a.departure || a.arrival || "").localeCompare(String(b.departure || b.arrival || "")));
 }
 
+const packingWorkflowStatuses = [
+  { id: "waiting_buy", label: "Chờ mua", hint: "Cần buyer xử lý", tone: "warn" },
+  { id: "purchased", label: "Đã mua", hint: "Chờ gom/gửi về VN", tone: "ready" },
+  { id: "sent_vn", label: "Đã gửi về VN", hint: "Theo dõi hàng bay", tone: "flying" },
+  { id: "received_vn", label: "Đã nhận ở VN", hint: "Chờ giao khách", tone: "arrived" }
+];
+
 function PackingListSummary({ title, eyebrow, batches, orders, openBuyingChecklist }) {
   const summaryBatches = sortedFlightBatches(batches)
     .map((batch) => {
@@ -1641,14 +1648,15 @@ function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, o
   const visibleBatches = focusBatchId === "all" || focusBatchId === "unassigned" ? sortedBatches : sortedBatches.filter((batch) => batch.id === focusBatchId);
   const visibleUnassigned = focusBatchId === "all" || focusBatchId === "unassigned" ? unassignedOrders : [];
   const allVisibleOrders = [...visibleBatches.flatMap((batch) => orders.filter((order) => order.batchId === batch.id)), ...visibleUnassigned];
+  const activeWorkflowOrders = allVisibleOrders.filter((order) => packingWorkflowStatuses.some((status) => status.id === normalizeOrderStatus(order.status)));
   const progress = flightOrderProgress(allVisibleOrders);
 
   return (
     <div className="screen-stack">
       <div className="panel-title standalone">
         <div>
-          <span className="eyebrow">Operations checklist</span>
-          <h2>Buying Checklist & Packing List</h2>
+          <span className="eyebrow">Fulfillment workflow</span>
+          <h2>Mua hàng & Packing</h2>
         </div>
         <button className="primary-button" onClick={() => openBatch()}>
           <Plus size={17} />
@@ -1656,11 +1664,11 @@ function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, o
         </button>
       </div>
       <section className="metric-grid lean">
-        <Kpi label="Tổng đơn trong list" value={String(progress.total)} icon={ClipboardList} />
-        <Kpi label="Còn thiếu/chờ mua" value={String(progress.waitingBuy)} icon={PackageCheck} tone={progress.waitingBuy ? "warning" : "success"} />
+        <Kpi label="Việc đang mở" value={String(activeWorkflowOrders.length)} icon={ClipboardList} />
+        <Kpi label="Chờ mua" value={String(progress.waitingBuy)} icon={PackageCheck} tone={progress.waitingBuy ? "warning" : "success"} />
         <Kpi label="Đã mua chưa gửi" value={String(progress.purchased)} icon={CheckCircle2} />
-        <Kpi label="Đã gửi về VN" value={String(progress.sentVn)} icon={Plane} />
-        <Kpi label="Đã nhận ở VN" value={String(progress.receivedVn)} icon={Boxes} />
+        <Kpi label="Đang về VN" value={String(progress.sentVn)} icon={Plane} />
+        <Kpi label="Chờ giao khách" value={String(progress.receivedVn)} icon={Boxes} />
       </section>
       <section className="panel buying-filter-panel">
         <div className="panel-title">
@@ -1683,14 +1691,61 @@ function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, o
           )}
         </div>
       </section>
-      <FlightChecklistPanel
-        batches={visibleBatches}
-        orders={orders}
-        unassignedOrders={visibleUnassigned}
+      <PackingWorkflowBoard
+        orders={activeWorkflowOrders}
+        batches={batches}
         openOrder={openOrder}
         updateOrderStatus={updateOrderStatus}
       />
     </div>
+  );
+}
+
+function PackingWorkflowBoard({ orders, batches, openOrder, updateOrderStatus }) {
+  return (
+    <section className="panel workflow-panel">
+      <div className="panel-title">
+        <div>
+          <span className="eyebrow">Action queue</span>
+          <h2>Việc mua hàng & packing đang mở</h2>
+        </div>
+        <PackageCheck size={18} />
+      </div>
+      <div className="workflow-board">
+        {packingWorkflowStatuses.map((column) => {
+          const columnOrders = orders.filter((order) => normalizeOrderStatus(order.status) === column.id);
+          return (
+            <section className={`workflow-column ${column.tone}`} key={column.id}>
+              <div className="workflow-column-head">
+                <div>
+                  <strong>{column.label}</strong>
+                  <span>{column.hint}</span>
+                </div>
+                <em>{columnOrders.length}</em>
+              </div>
+              <div className="workflow-card-list">
+                {columnOrders.map((order) => {
+                  const batch = batches.find((item) => item.id === order.batchId);
+                  return (
+                    <article className="workflow-card" key={order.id} onClick={() => openOrder(order)}>
+                      <ProductCell order={order} />
+                      <div className="workflow-card-meta">
+                        <strong>{order.id}</strong>
+                        <span>{order.customer || "-"} · SL {order.quantity} · {money(order.weightKg)}kg</span>
+                        <span>{batch ? `${batch.code || batch.id} · về VN ${batch.arrival || "-"}` : "Chưa xếp chuyến"}</span>
+                      </div>
+                      <FlightOrderQuickActions order={order} openOrder={openOrder} updateOrderStatus={updateOrderStatus} />
+                    </article>
+                  );
+                })}
+                {!columnOrders.length && <div className="workflow-empty">Không có việc ở cột này.</div>}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+      {!orders.length && <EmptyState title="Không có việc mua hàng/packing đang mở" body="Các đơn mới cần mua, đã mua, đang gửi hoặc đã nhận sẽ hiện ở đây theo từng trạng thái." />}
+    </section>
   );
 }
 
