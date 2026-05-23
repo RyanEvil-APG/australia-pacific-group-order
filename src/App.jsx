@@ -632,10 +632,8 @@ function compactDate(value) {
   return String(value || today()).replaceAll("-", "");
 }
 
-function compactDateDmy(value) {
-  if (!value) return "";
-  const [year, month, day] = String(value || today()).split("-");
-  return `${day || "00"}${month || "00"}${String(year || "0000").slice(-2)}`;
+function compactDateYmd(value) {
+  return String(value || "").replaceAll("-", "");
 }
 
 function orderCodeSegment(batch) {
@@ -712,7 +710,7 @@ function suggestNextBatchDraft(batches) {
 }
 
 function generateBatchCode(batch, batches) {
-  const datePart = compactDateDmy(batchCodeDate(batch));
+  const datePart = compactDateYmd(batchCodeDate(batch));
   if (!datePart) return "";
   const base = `${datePart} Flight`;
   const currentId = batch?.id;
@@ -729,6 +727,20 @@ function generateBatchCode(batch, batches) {
   if (!usedNumbers.length) return base;
   const nextNumber = Math.max(...usedNumbers) + 1;
   return `${base} ${String(nextNumber).padStart(2, "0")}`;
+}
+
+function normalizeBatchCodes(batches) {
+  if (!Array.isArray(batches)) return [];
+  const dateCounts = new Map();
+  return batches.map((batch) => {
+    if (!batch?.departure) return batch;
+    const datePart = compactDateYmd(batchCodeDate(batch));
+    if (!datePart) return batch;
+    const count = (dateCounts.get(datePart) || 0) + 1;
+    dateCounts.set(datePart, count);
+    const nextCode = `${datePart} Flight${count > 1 ? ` ${String(count).padStart(2, "0")}` : ""}`;
+    return nextCode && batch.code !== nextCode ? { ...batch, code: nextCode } : batch;
+  });
 }
 
 function App() {
@@ -793,7 +805,7 @@ function App() {
       ...state,
       orders: normalizeOrders(stripDemo(state.orders, knownDemoOrderIds)),
       customers: normalizeCustomers(state.customers),
-      batches: stripDemo(state.batches, knownDemoBatchIds),
+      batches: normalizeBatchCodes(stripDemo(state.batches, knownDemoBatchIds)),
       inventory: stripDemo(state.inventory, knownDemoStockIds, "sku"),
       tasks: stripDemo(state.tasks, knownDemoTaskIds)
     };
@@ -818,6 +830,11 @@ function App() {
 
   React.useEffect(() => {
     if (!batches.length) return;
+    setBatches((current) => {
+      const renamed = normalizeBatchCodes(current);
+      const changed = renamed.some((batch, index) => batch.code !== current[index]?.code);
+      return changed ? renamed : current;
+    });
     setOrders((current) => {
       let changed = false;
       const nextOrders = current.map((order) => {
@@ -3529,7 +3546,7 @@ function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderSt
               <input value={draft.code} onChange={(event) => setDraft({ ...draft, code: event.target.value, autoCode: false })} />
               <button type="button" onClick={() => setDraft({ ...draft, code: generateBatchCode(draft, batches), autoCode: true })}>Auto</button>
             </div>
-            <span className="field-hint">Chọn Ngày bay để app tự tạo dạng ddmmyy Flight. Thêm chuyến mới sẽ gợi ý lịch +14 ngày từ chuyến gần nhất.</span>
+            <span className="field-hint">Chọn Ngày bay để app tự tạo dạng yyyymmdd Flight, ví dụ 20260524 Flight. Thêm chuyến mới sẽ gợi ý lịch +14 ngày từ chuyến gần nhất.</span>
           </Field>
           <Field label="Tuyến"><input value={draft.route} onChange={(event) => setDraft({ ...draft, route: event.target.value })} /></Field>
           <Field label="Cutoff"><input type="date" value={draft.cutoff} onChange={(event) => updateFlightDate("cutoff", event.target.value)} /></Field>
