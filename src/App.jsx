@@ -321,6 +321,10 @@ function autoBatchForOrder(batches, orderDate = today()) {
   return scored.sort((a, b) => (a.primaryTime ?? a.nextTime) - (b.primaryTime ?? b.nextTime))[0]?.batch ?? null;
 }
 
+function batchFreightAud(batches, batchId) {
+  return money(batches.find((batch) => batch.id === batchId)?.freightAud);
+}
+
 function flightTimelineStage(batch) {
   const cutoffDiff = dateDiffFromToday(batch.cutoff);
   const departureDiff = dateDiffFromToday(batch.departure);
@@ -783,6 +787,7 @@ function App() {
       assigneeId: order?.assigneeId ?? "staff-vn",
       buyerId: order?.buyerId ?? "staff-vn",
       ...normalizeOrder(order),
+      intlShippingAud: money(order?.intlShippingAud) || money(defaultBatch?.freightAud) || 0,
       customerTier: normalizeCustomerTier(order?.customerTier)
     });
     setModal("order");
@@ -795,6 +800,7 @@ function App() {
       id: getOrderId(draft),
       quantity: Math.max(1, Number(draft.quantity || 1)),
       weightKg: Math.max(0, Number(draft.weightKg || 0)),
+      intlShippingAud: Math.max(0, Number(draft.intlShippingAud || batchFreightAud(batches, draft.batchId) || 0)),
       finalWeightRateVnd: Math.max(0, Number(draft.finalWeightRateVnd || defaultFinalWeightRateVnd)),
       customerTier: normalizeCustomerTier(draft.customerTier)
     });
@@ -830,11 +836,12 @@ function App() {
   function saveBatch(event) {
     event.preventDefault();
     const code = draft.code || draft.id;
-    const nextBatch = { ...draft, id: draft.id || makeId("DOT"), code };
+    const nextBatch = { ...draft, id: draft.id || makeId("DOT"), code, freightAud: Math.max(0, Number(draft.freightAud || 0)) };
     setBatches((current) => {
       const exists = current.some((batch) => batch.id === nextBatch.id);
       return exists ? current.map((batch) => (batch.id === nextBatch.id ? nextBatch : batch)) : [nextBatch, ...current];
     });
+    setOrders((current) => current.map((order) => (order.batchId === nextBatch.id ? normalizeOrder({ ...order, intlShippingAud: nextBatch.freightAud }) : order)));
     setModal(null);
   }
 
@@ -2222,6 +2229,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
     setDraft({
       ...draft,
       batchId: suggestedBatch.id,
+      intlShippingAud: money(suggestedBatch.freightAud),
       id: draft.id ? draft.id : generateOrderCode({ ...draft, batchId: suggestedBatch.id }, suggestedBatch, orders)
     });
   };
@@ -2315,7 +2323,12 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
                 onChange={(event) => {
                   const nextDate = event.target.value;
                   const nextBatch = !draft.batchId ? autoBatchForOrder(batches, nextDate) : null;
-                  setDraft({ ...draft, orderDate: nextDate, batchId: draft.batchId || nextBatch?.id || "" });
+                  setDraft({
+                    ...draft,
+                    orderDate: nextDate,
+                    batchId: draft.batchId || nextBatch?.id || "",
+                    intlShippingAud: draft.batchId ? draft.intlShippingAud : money(nextBatch?.freightAud) || draft.intlShippingAud
+                  });
                 }}
               />
             </Field>
@@ -2376,7 +2389,13 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
             <Field label="Số kg"><input type="number" min="0" step="0.1" value={draft.weightKg ?? 0} onChange={(event) => setDraft({ ...draft, weightKg: event.target.value })} /></Field>
             <Field label="Chuyến bay">
               <div className="flight-auto-picker">
-                <select value={draft.batchId} onChange={(event) => setDraft({ ...draft, batchId: event.target.value })}>
+                <select
+                  value={draft.batchId}
+                  onChange={(event) => {
+                    const nextBatchId = event.target.value;
+                    setDraft({ ...draft, batchId: nextBatchId, intlShippingAud: batchFreightAud(batches, nextBatchId) });
+                  }}
+                >
                   <option value="">Chưa xếp đợt</option>
                   {sortedFlightBatches(batches).map((batch) => <option value={batch.id} key={batch.id}>{batch.code || batch.id}</option>)}
                 </select>
@@ -2408,7 +2427,10 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
             </Field>
             <Field label="Tiền hàng AUD / sản phẩm"><input type="number" value={draft.aud} onChange={(event) => setDraft({ ...draft, aud: event.target.value })} /></Field>
             <Field label="Ship Úc AUD"><input type="number" value={draft.shippingAud} onChange={(event) => setDraft({ ...draft, shippingAud: event.target.value })} /></Field>
-            <Field label="Giá AUD/kg"><input type="number" min="0" step="0.01" value={draft.intlShippingAud} onChange={(event) => setDraft({ ...draft, intlShippingAud: event.target.value })} /></Field>
+            <Field label="Cước bay AUD/kg">
+              <input type="number" min="0" step="0.01" value={draft.intlShippingAud} onChange={(event) => setDraft({ ...draft, intlShippingAud: event.target.value })} />
+              <span className="field-hint">{selectedBatch ? `Tự lấy từ chuyến ${selectedBatch.code || selectedBatch.id}: ${aud(selectedBatch.freightAud)} / kg` : "Chọn chuyến bay để tự áp cước AUD/kg."}</span>
+            </Field>
             <Field label="Giá cân cuối VND/kg"><input type="number" min="0" value={draft.finalWeightRateVnd ?? defaultFinalWeightRateVnd} onChange={(event) => setDraft({ ...draft, finalWeightRateVnd: event.target.value })} /></Field>
             <Field label="Tỉ giá"><input type="number" value={draft.exchangeRate} onChange={(event) => setDraft({ ...draft, exchangeRate: event.target.value })} /></Field>
             <Field label="Phụ phí VND"><input type="number" value={draft.extraFeeVnd} onChange={(event) => setDraft({ ...draft, extraFeeVnd: event.target.value })} /></Field>
@@ -2463,7 +2485,10 @@ function BatchModal({ draft, setDraft, orders, openOrder, updateOrderStatus, sav
             </select>
           </Field>
           <Field label="Sức chứa kg"><input type="number" value={draft.capacityKg} onChange={(event) => setDraft({ ...draft, capacityKg: event.target.value })} /></Field>
-          <Field label="Cước bay AUD"><input type="number" value={draft.freightAud} onChange={(event) => setDraft({ ...draft, freightAud: event.target.value })} /></Field>
+          <Field label="Cước bay AUD/kg">
+            <input type="number" min="0" step="0.01" value={draft.freightAud} onChange={(event) => setDraft({ ...draft, freightAud: event.target.value })} />
+            <span className="field-hint">Lưu chuyến sẽ tự áp cước này vào toàn bộ đơn thuộc chuyến.</span>
+          </Field>
           <Field label="Note" wide><textarea value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} /></Field>
         </div>
         <section className="batch-modal-checklist">
