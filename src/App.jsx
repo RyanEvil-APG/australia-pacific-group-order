@@ -1795,11 +1795,37 @@ function OverviewBuyingBoard({ batches, orders, openOrder, openBuyingChecklist, 
 }
 
 function OrdersView(props) {
+  const [archiveGroupBy, setArchiveGroupBy] = React.useState("flight");
   const activeOrders = props.orders.filter((order) => !isArchivedOrder(order));
   const archivedOrders = props.orders.filter(isArchivedOrder);
   const archiveFocused = ["delivered", "cancelled"].includes(props.statusFilter);
   const mainOrders = archiveFocused ? archivedOrders : activeOrders;
-  const archivePreview = archiveFocused || props.query.trim() || props.batchFilter !== "all" || props.dateFrom || props.dateTo ? archivedOrders : archivedOrders.slice(0, 30);
+  const archiveGroups = React.useMemo(() => {
+    const groupMap = new Map();
+    archivedOrders.forEach((order) => {
+      const batch = findOrderBatch(props.batches, order);
+      const key =
+        archiveGroupBy === "year"
+          ? String(order.customerShippedDate || order.paidInFullDate || order.receivedVnDate || batch?.arrival || order.orderDate || "Chưa rõ").slice(0, 4)
+          : batch?.id || "unassigned";
+      const title = archiveGroupBy === "year" ? (key === "Chưa" ? "Chưa rõ năm" : `Năm ${key}`) : (batch?.code || "Chưa xếp chuyến");
+      const subtitle =
+        archiveGroupBy === "year"
+          ? `${archivedOrders.filter((item) => {
+              const itemBatch = findOrderBatch(props.batches, item);
+              return String(item.customerShippedDate || item.paidInFullDate || item.receivedVnDate || itemBatch?.arrival || item.orderDate || "Chưa rõ").slice(0, 4) === key;
+            }).length} đơn đã giao / hủy`
+          : `${batch?.arrival ? `Về VN ${batch.arrival}` : "Không có chuyến"} · ${batch?.route || "Archive"}`;
+      if (!groupMap.has(key)) groupMap.set(key, { key, title, subtitle, orders: [] });
+      groupMap.get(key).orders.push(order);
+    });
+    return [...groupMap.values()]
+      .map((group) => ({
+        ...group,
+        orders: group.orders.sort((a, b) => compareOrdersForDesk(a, b, props.batches))
+      }))
+      .sort((a, b) => orderSortTime(b.orders[0], findOrderBatch(props.batches, b.orders[0])) - orderSortTime(a.orders[0], findOrderBatch(props.batches, a.orders[0])));
+  }, [archivedOrders, archiveGroupBy, props.batches]);
   return (
     <div className="screen-stack">
       <FilterBar {...props} />
@@ -1837,10 +1863,29 @@ function OrdersView(props) {
               <span className="eyebrow">Archive</span>
               <h2>Đơn đã giao / hủy</h2>
             </div>
-            <span className="archive-count">{archivedOrders.length}</span>
+            <div className="archive-tools">
+              <select value={archiveGroupBy} onChange={(event) => setArchiveGroupBy(event.target.value)}>
+                <option value="flight">Nhóm theo chuyến bay</option>
+                <option value="year">Nhóm theo năm</option>
+              </select>
+              <span className="archive-count">{archivedOrders.length}</span>
+            </div>
           </div>
-          <OrdersTable orders={archivePreview} batches={props.batches} openOrder={props.openOrder} canSeeProfit={props.canSeeProfit} compact emptyTitle="Chưa có đơn đã giao hoặc hủy" emptyBody="Khi đơn hoàn tất, app tự đưa xuống đây để không làm rối bảng chính." />
-          {archivedOrders.length > archivePreview.length && <div className="archive-note">Đang hiện {archivePreview.length}/{archivedOrders.length} đơn archive gần nhất. Dùng tìm kiếm hoặc lọc trạng thái Đã giao khách để xem sâu hơn.</div>}
+          <div className="archive-group-list">
+            {archiveGroups.map((group, index) => (
+              <details className="archive-group" key={`${archiveGroupBy}-${group.key}`} defaultOpen={index === 0}>
+                <summary>
+                  <span>
+                    <strong>{group.title}</strong>
+                    <em>{group.subtitle}</em>
+                  </span>
+                  <b>{group.orders.length}</b>
+                </summary>
+                <OrdersTable orders={group.orders} batches={props.batches} openOrder={props.openOrder} canSeeProfit={props.canSeeProfit} compact emptyTitle="Không có đơn trong nhóm này" emptyBody="Đổi nhóm archive hoặc filter để xem nhóm khác." />
+              </details>
+            ))}
+            {!archiveGroups.length && <EmptyState title="Chưa có đơn đã giao hoặc hủy" body="Khi đơn hoàn tất, app tự đưa xuống đây theo chuyến bay hoặc theo năm." />}
+          </div>
         </div>
       )}
     </div>

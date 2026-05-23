@@ -666,11 +666,77 @@ th span {
   font-weight: 950;
 }
 
-.archive-note {
-  padding: 0 14px 14px;
+.archive-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.archive-tools select {
+  min-height: 34px;
+  padding: 0 10px;
+  color: #554d42;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.12);
+  border-radius: 8px;
+  font-weight: 900;
+}
+
+.archive-group-list {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+
+.archive-group {
+  background: #fffdf8;
+  border: 1px solid rgba(33, 29, 23, 0.09);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.archive-group summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.archive-group summary::-webkit-details-marker {
+  display: none;
+}
+
+.archive-group summary span,
+.archive-group summary strong,
+.archive-group summary em {
+  display: block;
+}
+
+.archive-group summary em {
+  margin-top: 3px;
   color: #746c61;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
+  font-style: normal;
   font-weight: 850;
+}
+
+.archive-group summary b {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 28px;
+  color: #274d7a;
+  background: #e9f2ff;
+  border-radius: 999px;
+  font-size: 0.82rem;
+}
+
+.archive-group[open] summary {
+  background: #fff8e8;
 }
 
 .split-grid {
@@ -2675,6 +2741,15 @@ tbody tr.split-bill-row {
 
   .orders-work-summary {
     grid-template-columns: 1fr;
+  }
+
+  .archive-tools {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .archive-tools select {
+    flex: 1;
   }
 
   .team-strip-panel {
