@@ -648,11 +648,49 @@ th span {
   overflow-x: auto;
 }
 
+.flight-table-wrap {
+  overflow-x: visible;
+}
+
 table {
   width: 100%;
   min-width: 820px;
   border-collapse: collapse;
   table-layout: fixed;
+}
+
+.flight-overview-table {
+  min-width: 0;
+}
+
+.flight-overview-table th:nth-child(1),
+.flight-overview-table td:nth-child(1) {
+  width: 18%;
+}
+
+.flight-overview-table th:nth-child(2),
+.flight-overview-table td:nth-child(2) {
+  width: 14%;
+}
+
+.flight-overview-table th:nth-child(3),
+.flight-overview-table td:nth-child(3) {
+  width: 20%;
+}
+
+.flight-overview-table th:nth-child(4),
+.flight-overview-table td:nth-child(4) {
+  width: 22%;
+}
+
+.flight-overview-table th:nth-child(5),
+.flight-overview-table td:nth-child(5) {
+  width: 14%;
+}
+
+.flight-overview-table th:nth-child(6),
+.flight-overview-table td:nth-child(6) {
+  width: 12%;
 }
 
 .compact-table {
@@ -1667,7 +1705,7 @@ tbody tr.split-bill-row {
 
 .flight-checklist-stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -1748,6 +1786,20 @@ tbody tr.split-bill-row {
   border-color: #274d7a;
 }
 
+.flight-order-actions button:disabled,
+.overview-buying-item button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.locked-action {
+  align-self: center;
+  color: #9b2c3a;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 950;
+}
+
 .post-arrival-panel {
   overflow: hidden;
 }
@@ -1825,6 +1877,22 @@ tbody tr.split-bill-row {
   margin-top: 3px;
   color: #211d17;
   font-size: 1rem;
+}
+
+.post-arrival-card.locked {
+  background: #fbfaf7;
+  border-style: dashed;
+}
+
+.arrival-lock-note,
+.permission-lock-banner {
+  padding: 8px 10px;
+  color: #842432;
+  background: #fff0f1;
+  border: 1px solid rgba(155, 44, 58, 0.18);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 900;
 }
 
 .post-arrival-grid {
@@ -2090,9 +2158,27 @@ tbody tr.split-bill-row {
   margin-bottom: 18px;
 }
 
+.modal-fieldset {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.modal-fieldset:disabled {
+  opacity: 0.74;
+}
+
+.modal-fieldset:disabled input,
+.modal-fieldset:disabled select,
+.modal-fieldset:disabled textarea,
+.post-arrival-card.locked input {
+  cursor: not-allowed;
+}
+
 .order-form-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr) 260px;
   align-items: start;
   gap: 14px;
 }
@@ -2474,6 +2560,10 @@ tbody tr.split-bill-row {
 
   table {
     min-width: 760px;
+  }
+
+  .flight-overview-table {
+    min-width: 0;
   }
 
   .buying-command-panel {

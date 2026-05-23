@@ -1013,8 +1013,16 @@ function App() {
     setModal("order");
   }
 
+  function canEditOrder(order) {
+    if (!order) return true;
+    const batch = findOrderBatch(batches, order);
+    if (!orderIsInVn(order, batch)) return true;
+    return activeAccount?.id === "ryan";
+  }
+
   function saveOrder(event) {
     event.preventDefault();
+    if (!canEditOrder(draft)) return;
     const chemistFallback = chemistPreviewFromUrl(draft.productUrl);
     const quantity = Math.max(1, Number(draft.quantity || 1));
     const unitWeightKg = Math.max(0, Number(draft.unitWeightKg ?? 0));
@@ -1044,6 +1052,8 @@ function App() {
   }
 
   function deleteOrder(id) {
+    const order = orders.find((item) => item.id === id);
+    if (order && !canEditOrder(order)) return;
     setOrders((current) => current.filter((order) => order.id !== id));
     setTransactions((current) => current.filter((item) => item.orderId !== id));
     setTasks((current) => current.filter((item) => item.linkedOrderId !== id));
@@ -1054,6 +1064,7 @@ function App() {
     setOrders((current) =>
       current.map((order) => {
         if (order.id !== id) return order;
+        if (!canEditOrder(order)) return order;
         const nextStatus = normalizeOrderStatus(status);
         const patch = { status: nextStatus };
         if (nextStatus === "received_vn" && !order.receivedVnDate) patch.receivedVnDate = today();
@@ -1071,6 +1082,7 @@ function App() {
     setOrders((current) =>
       current.map((order) => {
         if (order.id !== id) return order;
+        if (!canEditOrder(order)) return order;
         return normalizeOrder({ ...order, ...patch });
       })
     );
@@ -1354,6 +1366,7 @@ function App() {
             openBuyingChecklist={openBuyingChecklist}
             openAfterArrival={() => setActiveView("after-arrival")}
             updateOrderStatus={updateOrderStatus}
+            canEditOrder={canEditOrder}
             canSeeProfit={canSeeProfit}
           />
         )}
@@ -1376,6 +1389,7 @@ function App() {
             setDateTo={setDateTo}
             openOrder={openOrder}
             canSeeProfit={canSeeProfit}
+            canEditOrder={canEditOrder}
           />
         )}
 
@@ -1388,6 +1402,7 @@ function App() {
             openOrder={openOrder}
             openBatch={openBatch}
             updateOrderStatus={updateOrderStatus}
+            canEditOrder={canEditOrder}
           />
         )}
 
@@ -1401,6 +1416,7 @@ function App() {
             openOrder={openOrder}
             openBuyingChecklist={openBuyingChecklist}
             updateOrderStatus={updateOrderStatus}
+            canEditOrder={canEditOrder}
             canSeeProfit={canSeeProfit}
           />
         )}
@@ -1410,6 +1426,7 @@ function App() {
             batches={batches}
             openOrder={openOrder}
             updateOrder={updateAfterArrivalOrder}
+            canEditOrder={canEditOrder}
           />
         )}
         {activeView === "cashflow" && (
@@ -1438,6 +1455,7 @@ function App() {
           customers={customers}
           orders={orders}
           sessionToken={sessionToken}
+          canEditOrder={canEditOrder}
           save={saveOrder}
           remove={deleteOrder}
           close={() => setModal(null)}
@@ -1451,6 +1469,7 @@ function App() {
           orders={orders}
           openOrder={openOrder}
           updateOrderStatus={updateOrderStatus}
+          canEditOrder={canEditOrder}
           save={saveBatch}
           remove={deleteBatch}
           close={() => setModal(null)}
@@ -1600,7 +1619,7 @@ function FilterBar({ query, setQuery, statusFilter, setStatusFilter, batchFilter
 }
 
 function OverviewView(props) {
-  const { totals, orders, filteredOrders, batches, accounts, openOrder, openBatch, openBuyingChecklist, openAfterArrival, updateOrderStatus, canSeeProfit } = props;
+  const { totals, orders, filteredOrders, batches, accounts, openOrder, openBatch, openBuyingChecklist, openAfterArrival, updateOrderStatus, canEditOrder, canSeeProfit } = props;
   const reminders = afterArrivalReminders(orders, batches);
   const flightTimeline = batches
     .map((batch) => {
@@ -1632,6 +1651,7 @@ function OverviewView(props) {
           openOrder={openOrder}
           openBuyingChecklist={openBuyingChecklist}
           updateOrderStatus={updateOrderStatus}
+          canEditOrder={canEditOrder}
         />
 
         <section className="panel flight-timeline-panel overview-timeline">
@@ -1706,7 +1726,7 @@ function OverviewView(props) {
   );
 }
 
-function OverviewBuyingBoard({ batches, orders, openOrder, openBuyingChecklist, updateOrderStatus }) {
+function OverviewBuyingBoard({ batches, orders, openOrder, openBuyingChecklist, updateOrderStatus, canEditOrder }) {
   const nearestBatch = autoBatchForOrder(batches, today()) ?? sortedFlightBatches(batches)[0];
   const waitingOrders = nearestBatch
     ? orders.filter((order) => order.batchId === nearestBatch.id && normalizeOrderStatus(order.status) === "waiting_buy")
@@ -1736,7 +1756,7 @@ function OverviewBuyingBoard({ batches, orders, openOrder, openBuyingChecklist, 
         {waitingOrders.slice(0, 3).map((order) => (
           <div className="overview-buying-item" key={order.id} onClick={() => openOrder(order)}>
             <ProductCell order={order} />
-            <button type="button" onClick={(event) => { event.stopPropagation(); updateOrderStatus(order.id, "purchased"); }}>Đã mua</button>
+            <button type="button" disabled={canEditOrder && !canEditOrder(order)} onClick={(event) => { event.stopPropagation(); updateOrderStatus(order.id, "purchased"); }}>Đã mua</button>
           </div>
         ))}
         {!waitingOrders.length && <div className="overview-buying-empty">Chuyến gần nhất không còn đơn chờ mua.</div>}
@@ -2104,7 +2124,7 @@ function PackingListSummary({ title, eyebrow, batches, orders, openBuyingCheckli
   );
 }
 
-function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, openOrder, openBatch, updateOrderStatus }) {
+function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, openOrder, openBatch, updateOrderStatus, canEditOrder }) {
   const sortedBatches = sortedFlightBatches(batches);
   const unassignedOrders = orders.filter((order) => !order.batchId && normalizeOrderStatus(order.status) !== "cancelled");
   const visibleBatches = focusBatchId === "all" || focusBatchId === "unassigned" ? sortedBatches : sortedBatches.filter((batch) => batch.id === focusBatchId);
@@ -2181,12 +2201,13 @@ function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, o
         batches={batches}
         openOrder={openOrder}
         updateOrderStatus={updateOrderStatus}
+        canEditOrder={canEditOrder}
       />
     </div>
   );
 }
 
-function PackingWorkflowBoard({ orders, batches, openOrder, updateOrderStatus }) {
+function PackingWorkflowBoard({ orders, batches, openOrder, updateOrderStatus, canEditOrder }) {
   return (
     <section className="panel workflow-panel">
       <div className="panel-title">
@@ -2221,7 +2242,7 @@ function PackingWorkflowBoard({ orders, batches, openOrder, updateOrderStatus })
                           <span>{batch ? `${batch.code || batch.id} · về VN ${batch.arrival || "-"}` : "Chưa xếp chuyến"}</span>
                         </div>
                       </div>
-                      <FlightOrderQuickActions order={order} openOrder={openOrder} updateOrderStatus={updateOrderStatus} />
+                      <FlightOrderQuickActions order={order} openOrder={openOrder} updateOrderStatus={updateOrderStatus} canEditOrder={canEditOrder} />
                     </article>
                   );
                 })}
@@ -2392,7 +2413,7 @@ function FlightsViewLegacy({ batches, orders, openBatch, openOrder, openBuyingCh
   );
 }
 
-function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklist, updateOrderStatus, canSeeProfit }) {
+function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklist, updateOrderStatus, canEditOrder, canSeeProfit }) {
   const [flightFilter, setFlightFilter] = React.useState("nearest");
   const sortedBatches = sortedFlightBatches(batches);
   const activeBatches = sortedBatches.filter((batch) => !batchHasArrived(batch));
@@ -2429,14 +2450,13 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
   );
 
   const renderFlightRows = (rows, emptyTitle, emptyBody) => (
-    <div className="table-wrap">
-      <table>
+    <div className="table-wrap flight-table-wrap">
+      <table className="flight-overview-table">
         <thead>
           <tr>
             <th>Chuyến</th>
             <th>Trạng thái</th>
             <th>Lịch xử lý</th>
-            <th>Order</th>
             <th>Tiến độ</th>
             <th>Tài chính</th>
             <th>Ghi chú</th>
@@ -2463,9 +2483,9 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
                   <span>Bay {batch.departure || "-"}</span>
                   <span>Cutoff {batch.cutoff || "-"}</span>
                 </td>
-                <td data-label="Order">{batchOrders.length}</td>
                 <td data-label="Tiến độ">
                   <div className="flight-progress-mini">
+                    <span>Order {batchOrders.length}</span>
                     <span className={progress.waitingBuy ? "warn" : ""}>Chờ mua {progress.waitingBuy}</span>
                     <span>Đã mua {progress.purchased}</span>
                     <span>Đã gửi {progress.sentVn}</span>
@@ -2520,10 +2540,6 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
         <Kpi label="Chuyến đang mở" value={String(activeBatches.length)} icon={Plane} />
         <Kpi label="Order đã link" value={String(totals.orders)} icon={ClipboardList} />
         <Kpi label="Chờ mua" value={String(totals.waitingBuy)} icon={PackageCheck} tone={totals.waitingBuy ? "warning" : "success"} />
-        <Kpi label="Đã mua chờ gửi" value={String(totals.purchased)} icon={CheckCircle2} />
-        <Kpi label="Chưa xếp chuyến" value={String(unassignedOrders.length)} icon={Filter} tone={unassignedOrders.length ? "warning" : ""} />
-        <Kpi label="Lịch sử đã về" value={String(arrivedBatches.length)} icon={Boxes} />
-        <Kpi label="Còn phải thu" value={vnd(totals.remaining)} icon={WalletCards} tone="warning" />
         {canSeeProfit && <Kpi label="Lãi chuyến đang mở" value={vnd(totals.revenue - totals.cost)} icon={Gem} tone="success" />}
       </section>
 
@@ -2592,7 +2608,7 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
   );
 }
 
-function FlightChecklistPanel({ batches, orders, unassignedOrders, openOrder, updateOrderStatus }) {
+function FlightChecklistPanel({ batches, orders, unassignedOrders, openOrder, updateOrderStatus, canEditOrder }) {
   const groupedBatches = [
     ...batches.map((batch) => ({
       id: batch.id,
@@ -2645,7 +2661,7 @@ function FlightChecklistPanel({ batches, orders, unassignedOrders, openOrder, up
               <div className="flight-order-list">
                 {actionableOrders.slice(0, 12).map((order) => {
                   return (
-                    <FlightOrderRow order={order} openOrder={openOrder} updateOrderStatus={updateOrderStatus} key={order.id} />
+                    <FlightOrderRow order={order} openOrder={openOrder} updateOrderStatus={updateOrderStatus} canEditOrder={canEditOrder} key={order.id} />
                   );
                 })}
                 {!actionableOrders.length && <EmptyState title="Không còn đơn cần xử lý" body="Các đơn trong chuyến này đã giao/hủy hoặc chưa có đơn nào được xếp vào chuyến." />}
@@ -2660,20 +2676,22 @@ function FlightChecklistPanel({ batches, orders, unassignedOrders, openOrder, up
   );
 }
 
-function FlightOrderQuickActions({ order, openOrder, updateOrderStatus }) {
+function FlightOrderQuickActions({ order, openOrder, updateOrderStatus, canEditOrder }) {
   const status = normalizeOrderStatus(order.status);
+  const editable = !canEditOrder || canEditOrder(order);
   return (
     <div className="flight-order-actions" onClick={(event) => event.stopPropagation()}>
-      {status === "waiting_buy" && <button type="button" onClick={() => updateOrderStatus(order.id, "purchased")}>Đã mua</button>}
-      {status === "purchased" && <button type="button" onClick={() => updateOrderStatus(order.id, "sent_vn")}>Đã gửi VN</button>}
-      {status === "sent_vn" && <button type="button" onClick={() => updateOrderStatus(order.id, "received_vn")}>Đã nhận VN</button>}
-      {status === "received_vn" && <button type="button" onClick={() => updateOrderStatus(order.id, "delivered")}>Đã giao</button>}
+      {!editable && <em className="locked-action">Cần Ryan cấp quyền</em>}
+      {status === "waiting_buy" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "purchased")}>Đã mua</button>}
+      {status === "purchased" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "sent_vn")}>Đã gửi VN</button>}
+      {status === "sent_vn" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "received_vn")}>Đã nhận VN</button>}
+      {status === "received_vn" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "delivered")}>Đã giao</button>}
       <button type="button" onClick={() => openOrder(order)}>Sửa</button>
     </div>
   );
 }
 
-function FlightOrderRow({ order, openOrder, updateOrderStatus }) {
+function FlightOrderRow({ order, openOrder, updateOrderStatus, canEditOrder }) {
   const status = normalizeOrderStatus(order.status);
   return (
     <div className="flight-order-item" onClick={() => openOrder(order)}>
@@ -2683,12 +2701,12 @@ function FlightOrderRow({ order, openOrder, updateOrderStatus }) {
         <span>{order.customer || "-"} · SL {orderFinance(order).quantity} · Tổng {kg(orderTotalWeightKg(order))}kg</span>
         <span className={`status-chip ${status}`}>{statusLabel(status)}</span>
       </div>
-      <FlightOrderQuickActions order={order} openOrder={openOrder} updateOrderStatus={updateOrderStatus} />
+      <FlightOrderQuickActions order={order} openOrder={openOrder} updateOrderStatus={updateOrderStatus} canEditOrder={canEditOrder} />
     </div>
   );
 }
 
-function AfterArrivalView({ orders, batches, openOrder, updateOrder }) {
+function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrder }) {
   const managedStatuses = new Set(["sent_vn", "received_vn", "delivered"]);
   const managedOrders = orders
     .filter((order) => {
@@ -2846,8 +2864,9 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder }) {
                     const receivedChecked = Boolean(order.receivedVnDate || ["received_vn", "delivered"].includes(status));
                     const shippedChecked = Boolean(order.customerShipped || status === "delivered");
                     const paidChecked = Boolean(order.paidInFull || finance.remainingVnd <= 0);
+                    const editable = !canEditOrder || canEditOrder(order);
                     return (
-                      <article className="post-arrival-card" key={order.id}>
+                      <article className={`post-arrival-card ${editable ? "" : "locked"}`} key={order.id}>
                         <button className="post-arrival-product" type="button" onClick={() => openOrder(order)}>
                           <ProductCell order={order} />
                           <span>{order.id}</span>
@@ -2856,26 +2875,28 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder }) {
                           <span>{order.customer || "-"} · {batch?.code || "Chưa xếp chuyến"}</span>
                           <span>Về VN {order.receivedVnDate || batch?.arrival || "-"}</span>
                         </div>
+                        {!editable && <div className="arrival-lock-note">Chỉ Ryan được sửa đơn đã về. Staff cần xin quyền trước khi chỉnh.</div>}
                         <label className={`ops-check ${receivedChecked ? "done" : ""}`}>
-                          <input type="checkbox" checked={receivedChecked} disabled={shippedChecked} onChange={(event) => setReceived(order, event.target.checked)} />
+                          <input type="checkbox" checked={receivedChecked} disabled={shippedChecked || !editable} onChange={(event) => setReceived(order, event.target.checked)} />
                           <span>Đã về VN</span>
-                          <input type="date" value={order.receivedVnDate || ""} onChange={(event) => updateOrder(order.id, { receivedVnDate: event.target.value, vnStockLocation: event.target.value ? (order.vnStockLocation || "Kho VN") : order.vnStockLocation, status: status === "sent_vn" && event.target.value ? "received_vn" : status })} />
+                          <input type="date" disabled={!editable} value={order.receivedVnDate || ""} onChange={(event) => updateOrder(order.id, { receivedVnDate: event.target.value, vnStockLocation: event.target.value ? (order.vnStockLocation || "Kho VN") : order.vnStockLocation, status: status === "sent_vn" && event.target.value ? "received_vn" : status })} />
                         </label>
                         <label className={`ops-check ${order.vnStockChecked ? "done" : ""}`}>
-                          <input type="checkbox" checked={Boolean(order.vnStockChecked)} onChange={(event) => updateOrder(order.id, { vnStockChecked: event.target.checked })} />
+                          <input type="checkbox" checked={Boolean(order.vnStockChecked)} disabled={!editable} onChange={(event) => updateOrder(order.id, { vnStockChecked: event.target.checked })} />
                           <span>Đã kiểm kho</span>
-                          <input value={order.vnStockLocation || ""} placeholder="Kho/ô giữ hàng" onChange={(event) => updateOrder(order.id, { vnStockLocation: event.target.value })} />
+                          <input value={order.vnStockLocation || ""} disabled={!editable} placeholder="Kho/ô giữ hàng" onChange={(event) => updateOrder(order.id, { vnStockLocation: event.target.value })} />
                         </label>
                         <label className={`ops-check ${shippedChecked ? "done" : ""}`}>
-                          <input type="checkbox" checked={shippedChecked} onChange={(event) => setShipped(order, event.target.checked)} />
+                          <input type="checkbox" checked={shippedChecked} disabled={!editable} onChange={(event) => setShipped(order, event.target.checked)} />
                           <span>Đã ship/giao khách</span>
-                          <input type="date" value={order.customerShippedDate || ""} onChange={(event) => updateOrder(order.id, { customerShippedDate: event.target.value, customerShipped: Boolean(event.target.value), status: event.target.value ? "delivered" : status })} />
+                          <input type="date" disabled={!editable} value={order.customerShippedDate || ""} onChange={(event) => updateOrder(order.id, { customerShippedDate: event.target.value, customerShipped: Boolean(event.target.value), status: event.target.value ? "delivered" : status })} />
                         </label>
                         <label className={`ops-check ${paidChecked ? "done" : ""}`}>
-                          <input type="checkbox" checked={paidChecked} onChange={(event) => setPaid(order, event.target.checked)} />
+                          <input type="checkbox" checked={paidChecked} disabled={!editable} onChange={(event) => setPaid(order, event.target.checked)} />
                           <span>Đã nhận hết tiền</span>
                           <input
                             type="date"
+                            disabled={!editable}
                             value={order.paidInFullDate || ""}
                             onChange={(event) => {
                               const value = event.target.value;
@@ -2891,7 +2912,7 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder }) {
                           <span>Còn thu</span>
                           <strong>{vnd(paidChecked ? 0 : finance.remainingVnd)}</strong>
                         </div>
-                        <input className="post-arrival-note" value={order.vnStockNote || ""} placeholder="Ghi chú kho: thiếu món, chờ khách lấy, địa chỉ ship..." onChange={(event) => updateOrder(order.id, { vnStockNote: event.target.value })} />
+                        <input className="post-arrival-note" disabled={!editable} value={order.vnStockNote || ""} placeholder="Ghi chú kho: thiếu món, chờ khách lấy, địa chỉ ship..." onChange={(event) => updateOrder(order.id, { vnStockNote: event.target.value })} />
                       </article>
                     );
                   })}
@@ -3074,8 +3095,9 @@ function Field({ label, children, wide }) {
   );
 }
 
-function OrderModal({ draft, setDraft, batches, accounts, customers, orders, sessionToken, save, remove, close }) {
+function OrderModal({ draft, setDraft, batches, accounts, customers, orders, sessionToken, canEditOrder, save, remove, close }) {
   const finance = orderFinance(draft);
+  const canEdit = !canEditOrder || canEditOrder(draft);
   const selectedBatch = batches.find((batch) => batch.id === draft.batchId);
   const suggestedBatch = autoBatchForOrder(batches, draft.orderDate || today());
   const [previewStatus, setPreviewStatus] = React.useState("idle");
@@ -3171,6 +3193,12 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
   return (
     <ModalShell title="Sửa / thêm đơn hàng" eyebrow="Order management" close={close}>
       <form onSubmit={save}>
+        {!canEdit && (
+          <div className="permission-lock-banner">
+            Đơn này đã về VN. Account staff chỉ được xem, cần xin Ryan cấp quyền nếu muốn sửa đơn đã về.
+          </div>
+        )}
+        <fieldset disabled={!canEdit} className="modal-fieldset">
         <div className="order-form-layout">
           <div className="form-grid">
             <Field label="Mã đơn">
@@ -3362,23 +3390,24 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
             <div><span>Tổng thu tự động</span><strong>{vnd(finance.suggestedTotalThuVnd)}</strong></div>
           </div>
         </div>
+        </fieldset>
         <datalist id="customer-suggestions">
           {customers.map((customer) => <option value={customer.name} key={customer.id}>{customer.phone}</option>)}
         </datalist>
         <div className="modal-actions">
           <button className="ghost-button" type="button" onClick={close}>Hủy</button>
-          <button className="danger-button" type="button" onClick={() => remove(draft.id)}><Trash2 size={16} /> Xóa</button>
-          <button className="primary-button" type="submit"><CheckCircle2 size={17} /> Lưu đơn</button>
+          <button className="danger-button" type="button" disabled={!canEdit} onClick={() => remove(draft.id)}><Trash2 size={16} /> Xóa</button>
+          <button className="primary-button" type="submit" disabled={!canEdit}><CheckCircle2 size={17} /> {canEdit ? "Lưu đơn" : "Cần Ryan cấp quyền"}</button>
         </div>
       </form>
     </ModalShell>
   );
 }
 
-function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderStatus, save, remove, close }) {
+function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderStatus, canEditOrder, save, remove, close }) {
   const batchOrders = orders.filter((order) => order.batchId === draft.id);
   const progress = flightOrderProgress(batchOrders);
-  const activeBatchOrders = batchOrders.filter((order) => !["delivered", "cancelled"].includes(normalizeOrderStatus(order.status)));
+  const totalWeight = batchOrders.reduce((sum, order) => sum + orderTotalWeightKg(order), 0);
   function updateFlightDate(field, value) {
     const nextDraft = { ...draft, [field]: value };
     setDraft({
@@ -3426,15 +3455,15 @@ function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderSt
             <span>Chờ mua <strong>{progress.waitingBuy}</strong></span>
             <span>Đã mua <strong>{progress.purchased}</strong></span>
             <span>Đã gửi/nhận <strong>{progress.sentVn + progress.receivedVn}</strong></span>
+            <span>Tổng kg <strong>{kg(totalWeight)}</strong></span>
           </div>
           <div className="flight-order-list compact">
-            {activeBatchOrders.slice(0, 10).map((order) => (
-              <FlightOrderRow order={order} openOrder={openOrder} updateOrderStatus={updateOrderStatus} key={order.id} />
+            {batchOrders.map((order) => (
+              <FlightOrderRow order={order} openOrder={openOrder} updateOrderStatus={updateOrderStatus} canEditOrder={canEditOrder} key={order.id} />
             ))}
-            {!activeBatchOrders.length && (
+            {!batchOrders.length && (
               <EmptyState title="Chưa có đơn cần xử lý trong chuyến" body="Vào Đơn hàng, mở từng đơn và chọn chuyến bay này để gom hàng vào đúng đợt." />
             )}
-            {activeBatchOrders.length > 10 && <EmptyState title={`Đang hiện 10/${activeBatchOrders.length} đơn`} body="Vào tab Chuyến bay để xem checklist đầy đủ hơn." />}
           </div>
         </section>
         <div className="modal-actions">
