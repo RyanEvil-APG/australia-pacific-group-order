@@ -521,7 +521,7 @@ table {
 }
 
 .compact-table {
-  min-width: 760px;
+  min-width: 700px;
 }
 
 th {
@@ -606,6 +606,20 @@ tbody tr.split-bill-row {
 
 .finance-cell strong {
   margin-bottom: 4px;
+}
+
+.compact-finance-cell strong,
+.compact-finance-cell span {
+  width: max-content;
+  max-width: 100%;
+}
+
+.compact-finance-cell span {
+  font-size: 0.78rem;
+}
+
+.compact-finance-cell .money-due::before {
+  content: "Còn ";
 }
 
 .status-chip,

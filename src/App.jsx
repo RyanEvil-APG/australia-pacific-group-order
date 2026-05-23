@@ -190,6 +190,16 @@ function vnd(value) {
   return `${formatter.format(Math.round(Number(value || 0)))}đ`;
 }
 
+function compactVnd(value) {
+  const amount = Math.round(Number(value || 0));
+  const absolute = Math.abs(amount);
+  const format = (number) => number.toLocaleString("vi-VN", { maximumFractionDigits: 1 });
+  if (absolute >= 1000000000) return `${format(amount / 1000000000)} tỷ`;
+  if (absolute >= 1000000) return `${format(amount / 1000000)}tr`;
+  if (absolute >= 1000) return `${format(Math.round(amount / 1000))}k`;
+  return vnd(amount);
+}
+
 function aud(value) {
   return `A$${formatter.format(Number(value || 0))}`;
 }
@@ -1418,7 +1428,7 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
   const visibleOrders = orders.slice(0, rowLimit);
   return (
     <div className="table-wrap">
-      <table>
+      <table className={compact ? "compact-table" : ""}>
         <thead>
           <tr>
             <th>Mã đơn</th>
@@ -1426,7 +1436,7 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
             <th>Sản phẩm<br /><span>Số lượng/kg</span></th>
             <th>Tình trạng</th>
             <th>Chuyến bay<br /><span>Deadline mua</span></th>
-            <th>Tài chính</th>
+            <th>{compact ? "Thu/Còn" : "Tài chính"}</th>
           </tr>
         </thead>
         <tbody>
@@ -1444,12 +1454,21 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
                   <span>{batch?.cutoff ? `Deadline ${batch.cutoff} (${dateLabel(batch.cutoff)})` : "Chưa có deadline"}</span>
                   <span>{batch?.arrival ? `Về VN ${batch.arrival}` : ""}</span>
                 </td>
-                <td data-label="Tài chính" className="finance-cell">
-                  <strong>{vnd(finance.totalThuVnd)}</strong>
-                  <span>Chi phí {vnd(finance.totalCostVnd)}</span>
-                  <span>Cọc {vnd(finance.depositVnd)}</span>
-                  <span className="money-due">Còn thu {vnd(finance.remainingVnd)}</span>
-                  {canSeeProfit && <span>Lãi {vnd(finance.profitVnd)}</span>}
+                <td data-label={compact ? "Thu/Còn" : "Tài chính"} className={`finance-cell ${compact ? "compact-finance-cell" : ""}`}>
+                  {compact ? (
+                    <>
+                      <strong title={vnd(finance.totalThuVnd)}>{compactVnd(finance.totalThuVnd)}</strong>
+                      <span className="money-due" title={vnd(finance.remainingVnd)}>{compactVnd(finance.remainingVnd)}</span>
+                    </>
+                  ) : (
+                    <>
+                      <strong>{vnd(finance.totalThuVnd)}</strong>
+                      <span>Chi phí {vnd(finance.totalCostVnd)}</span>
+                      <span>Cọc {vnd(finance.depositVnd)}</span>
+                      <span className="money-due">Còn thu {vnd(finance.remainingVnd)}</span>
+                      {canSeeProfit && <span>Lãi {vnd(finance.profitVnd)}</span>}
+                    </>
+                  )}
                 </td>
               </tr>
             );
