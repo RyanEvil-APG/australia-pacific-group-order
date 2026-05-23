@@ -1556,6 +1556,102 @@ tbody tr.split-bill-row {
   border-color: #274d7a;
 }
 
+.post-arrival-panel {
+  overflow: hidden;
+}
+
+.post-arrival-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 10px;
+  padding: 14px;
+}
+
+.post-arrival-card {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  background: #fffdf8;
+  border: 1px solid rgba(33, 29, 23, 0.09);
+  border-radius: 8px;
+}
+
+.post-arrival-product {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+}
+
+.post-arrival-product > span,
+.post-arrival-meta span {
+  color: #746c61;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.post-arrival-meta {
+  display: grid;
+  gap: 3px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(33, 29, 23, 0.08);
+}
+
+.ops-check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 142px;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px;
+  background: #f8f3ea;
+  border: 1px solid rgba(33, 29, 23, 0.08);
+  border-radius: 8px;
+  font-weight: 900;
+}
+
+.ops-check.done {
+  background: #edf9f4;
+  border-color: rgba(11, 118, 88, 0.18);
+}
+
+.ops-check input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #0b7658;
+}
+
+.ops-check input[type="date"] {
+  min-height: 34px;
+  padding: 0 8px;
+  font-size: 0.82rem;
+}
+
+.post-arrival-money {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.08);
+  border-radius: 8px;
+}
+
+.post-arrival-money span {
+  color: #746c61;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.post-arrival-money strong {
+  color: #9b2c3a;
+}
+
 .task-card {
   cursor: pointer;
 }
@@ -2207,6 +2303,20 @@ tbody tr.split-bill-row {
 
   .flight-order-actions button {
     flex: 1 1 120px;
+  }
+
+  .post-arrival-grid {
+    grid-template-columns: 1fr;
+    padding: 10px;
+  }
+
+  .ops-check {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .ops-check input[type="date"] {
+    grid-column: 2;
+    width: 100%;
   }
 
   .inline-input-action {

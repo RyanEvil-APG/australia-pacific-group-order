@@ -112,6 +112,11 @@ function normalizeOrders(items) {
           source: order?.source || chemistFallback?.siteName || "",
           productImageUrl,
           productImageSource: productImageUrl ? (order?.productImageSource || "auto") : "",
+          customerShipped: Boolean(order?.customerShipped || normalizeOrderStatus(order?.status) === "delivered"),
+          paidInFull: Boolean(order?.paidInFull),
+          receivedVnDate: order?.receivedVnDate || "",
+          customerShippedDate: order?.customerShippedDate || "",
+          paidInFullDate: order?.paidInFullDate || "",
           status: normalizeOrderStatus(order?.status)
         };
       })

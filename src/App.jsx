@@ -22,6 +22,7 @@ import {
   Settings,
   ShieldCheck,
   Trash2,
+  Truck,
   Upload,
   UserRound,
   WalletCards
@@ -100,6 +101,11 @@ const emptyOrder = {
   totalThuVnd: 0,
   depositVnd: 0,
   splitBill: false,
+  receivedVnDate: "",
+  customerShipped: false,
+  customerShippedDate: "",
+  paidInFull: false,
+  paidInFullDate: "",
   note: ""
 };
 
@@ -159,6 +165,7 @@ const navItems = [
   { id: "orders", label: "Đơn hàng", icon: ClipboardList },
   { id: "buying", label: "Mua hàng & Packing", icon: PackageCheck },
   { id: "flights", label: "Chuyến bay", icon: Plane },
+  { id: "after-arrival", label: "Sau hàng về", icon: Truck },
   { id: "stock", label: "Hàng có sẵn", icon: Boxes },
   { id: "customers", label: "Khách hàng", icon: UserRound },
   { id: "cashflow", label: "Thu/chi", icon: CreditCard },
@@ -259,6 +266,11 @@ function normalizeOrder(order) {
     productImageUrl,
     productImageSource: productImageUrl ? (order?.productImageSource || "auto") : "",
     splitBill: Boolean(order?.splitBill),
+    customerShipped: Boolean(order?.customerShipped || normalizeOrderStatus(order?.status) === "delivered"),
+    paidInFull: Boolean(order?.paidInFull),
+    receivedVnDate: order?.receivedVnDate || "",
+    customerShippedDate: order?.customerShippedDate || "",
+    paidInFullDate: order?.paidInFullDate || "",
     status: normalizeOrderStatus(order?.status)
   };
 }
@@ -571,7 +583,8 @@ function App() {
       transactions: "apg-order.transactions",
       tasks: "apg-order.tasks",
       currentAccountId: "apg-order.currentAccountId",
-      sessionToken: "apg-order.sessionToken"
+      sessionToken: "apg-order.sessionToken",
+      sessionExpiresAt: "apg-order.sessionExpiresAt"
     }),
     []
   );
@@ -585,6 +598,7 @@ function App() {
   const [tasks, setTasks] = useStoredState(storageKeys.tasks, []);
   const [currentAccountId, setCurrentAccountId] = useStoredState(storageKeys.currentAccountId, null);
   const [sessionToken, setSessionToken] = useStoredState(storageKeys.sessionToken, null);
+  const [sessionExpiresAt, setSessionExpiresAt] = useStoredState(storageKeys.sessionExpiresAt, 0);
 
   const [activeView, setActiveView] = React.useState("overview");
   const [loginForm, setLoginForm] = React.useState({ username: "", password: "" });
@@ -681,6 +695,7 @@ function App() {
         if (error.message === "session expired") {
           setSessionToken(null);
           setCurrentAccountId(null);
+          setSessionExpiresAt(0);
           setLoginError("Phiên đăng nhập đã hết hạn, đăng nhập lại để sync cloud.");
         }
       });
@@ -716,6 +731,7 @@ function App() {
           if (error.message === "session expired") {
             setSessionToken(null);
             setCurrentAccountId(null);
+            setSessionExpiresAt(0);
             setLoginError("Phiên đăng nhập đã hết hạn, đăng nhập lại để sync cloud.");
           }
         });
@@ -723,6 +739,27 @@ function App() {
 
     return () => window.clearTimeout(timeout);
   }, [sessionToken, currentAccountId, accounts, orders, customers, batches, inventory, transactions, tasks]);
+
+  React.useEffect(() => {
+    if (!sessionToken || !sessionExpiresAt) return undefined;
+    const remainingMs = Number(sessionExpiresAt) - Date.now();
+    if (remainingMs <= 0) {
+      setSessionToken(null);
+      setCurrentAccountId(null);
+      setSessionExpiresAt(0);
+      setLoginError("Phiên đăng nhập đã hết 8 tiếng, đăng nhập lại để tiếp tục.");
+      return undefined;
+    }
+    const timeout = window.setTimeout(() => {
+      setSessionToken(null);
+      setCurrentAccountId(null);
+      setSessionExpiresAt(0);
+      setModal(null);
+      setIsSettingsOpen(false);
+      setLoginError("Phiên đăng nhập đã hết 8 tiếng, đăng nhập lại để tiếp tục.");
+    }, remainingMs);
+    return () => window.clearTimeout(timeout);
+  }, [sessionToken, sessionExpiresAt]);
 
   const filteredOrders = React.useMemo(() => {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
@@ -802,6 +839,7 @@ function App() {
       const data = await response.json();
       setSessionToken(data.token);
       setCurrentAccountId(data.account.id);
+      setSessionExpiresAt(Date.now() + Number(data.expiresInMs || 8 * 60 * 60 * 1000));
       setLoginError("");
       applyServerState(data.state);
       setSyncStatus("cloud");
@@ -817,6 +855,7 @@ function App() {
     }
     setSessionToken(null);
     setCurrentAccountId(null);
+    setSessionExpiresAt(0);
     setModal(null);
     setIsSettingsOpen(false);
   }
@@ -875,7 +914,29 @@ function App() {
   }
 
   function updateOrderStatus(id, status) {
-    setOrders((current) => current.map((order) => (order.id === id ? normalizeOrder({ ...order, status }) : order)));
+    setOrders((current) =>
+      current.map((order) => {
+        if (order.id !== id) return order;
+        const nextStatus = normalizeOrderStatus(status);
+        const patch = { status: nextStatus };
+        if (nextStatus === "received_vn" && !order.receivedVnDate) patch.receivedVnDate = today();
+        if (nextStatus === "delivered") {
+          patch.customerShipped = true;
+          if (!order.customerShippedDate) patch.customerShippedDate = today();
+          if (!order.receivedVnDate) patch.receivedVnDate = today();
+        }
+        return normalizeOrder({ ...order, ...patch });
+      })
+    );
+  }
+
+  function updateAfterArrivalOrder(id, patch) {
+    setOrders((current) =>
+      current.map((order) => {
+        if (order.id !== id) return order;
+        return normalizeOrder({ ...order, ...patch });
+      })
+    );
   }
 
   function openBuyingChecklist(batchId = "all") {
@@ -1194,6 +1255,14 @@ function App() {
             openBuyingChecklist={openBuyingChecklist}
             updateOrderStatus={updateOrderStatus}
             canSeeProfit={canSeeProfit}
+          />
+        )}
+        {activeView === "after-arrival" && (
+          <AfterArrivalView
+            orders={orders}
+            batches={batches}
+            openOrder={openOrder}
+            updateOrder={updateAfterArrivalOrder}
           />
         )}
         {activeView === "cashflow" && (
@@ -2133,6 +2202,162 @@ function FlightOrderRow({ order, openOrder, updateOrderStatus }) {
         <span className={`status-chip ${status}`}>{statusLabel(status)}</span>
       </div>
       <FlightOrderQuickActions order={order} openOrder={openOrder} updateOrderStatus={updateOrderStatus} />
+    </div>
+  );
+}
+
+function AfterArrivalView({ orders, batches, openOrder, updateOrder }) {
+  const managedStatuses = new Set(["sent_vn", "received_vn", "delivered"]);
+  const managedOrders = orders
+    .filter((order) => {
+      const status = normalizeOrderStatus(order.status);
+      return managedStatuses.has(status) || order.receivedVnDate || order.customerShipped || order.paidInFull;
+    })
+    .sort((a, b) => {
+      const financeA = orderFinance(a);
+      const financeB = orderFinance(b);
+      const scoreA = (a.receivedVnDate ? 0 : 4) + (a.customerShipped ? 0 : 2) + ((a.paidInFull || financeA.remainingVnd <= 0) ? 0 : 1);
+      const scoreB = (b.receivedVnDate ? 0 : 4) + (b.customerShipped ? 0 : 2) + ((b.paidInFull || financeB.remainingVnd <= 0) ? 0 : 1);
+      if (scoreA !== scoreB) return scoreB - scoreA;
+      return String(a.receivedVnDate || findOrderBatch(batches, a)?.arrival || "").localeCompare(String(b.receivedVnDate || findOrderBatch(batches, b)?.arrival || ""));
+    });
+  const totals = managedOrders.reduce(
+    (sum, order) => {
+      const finance = orderFinance(order);
+      const paid = Boolean(order.paidInFull || finance.remainingVnd <= 0);
+      sum.received += (order.receivedVnDate || ["received_vn", "delivered"].includes(normalizeOrderStatus(order.status))) ? 1 : 0;
+      sum.shipped += (order.customerShipped || normalizeOrderStatus(order.status) === "delivered") ? 1 : 0;
+      sum.paid += paid ? 1 : 0;
+      sum.remaining += paid ? 0 : finance.remainingVnd;
+      return sum;
+    },
+    { received: 0, shipped: 0, paid: 0, remaining: 0 }
+  );
+
+  function setReceived(order, checked) {
+    if (checked) {
+      updateOrder(order.id, {
+        status: normalizeOrderStatus(order.status) === "sent_vn" ? "received_vn" : order.status,
+        receivedVnDate: order.receivedVnDate || today()
+      });
+      return;
+    }
+    updateOrder(order.id, {
+      status: normalizeOrderStatus(order.status) === "received_vn" ? "sent_vn" : order.status,
+      receivedVnDate: ""
+    });
+  }
+
+  function setShipped(order, checked) {
+    if (checked) {
+      updateOrder(order.id, {
+        status: "delivered",
+        receivedVnDate: order.receivedVnDate || today(),
+        customerShipped: true,
+        customerShippedDate: order.customerShippedDate || today()
+      });
+      return;
+    }
+    updateOrder(order.id, {
+      status: "received_vn",
+      customerShipped: false,
+      customerShippedDate: ""
+    });
+  }
+
+  function setPaid(order, checked) {
+    const finance = orderFinance(order);
+    if (checked) {
+      updateOrder(order.id, {
+        paidInFull: true,
+        paidInFullDate: order.paidInFullDate || today(),
+        depositVnd: Math.max(money(order.depositVnd), finance.totalThuVnd)
+      });
+      return;
+    }
+    updateOrder(order.id, {
+      paidInFull: false,
+      paidInFullDate: ""
+    });
+  }
+
+  return (
+    <div className="screen-stack">
+      <div className="panel-title standalone">
+        <div>
+          <span className="eyebrow">After arrival ops</span>
+          <h2>Sau hàng về VN</h2>
+        </div>
+      </div>
+      <section className="metric-grid lean">
+        <Kpi label="Đơn cần theo dõi" value={String(managedOrders.length)} icon={Truck} />
+        <Kpi label="Đã về VN" value={String(totals.received)} icon={PackageCheck} />
+        <Kpi label="Đã ship/giao" value={String(totals.shipped)} icon={CheckCircle2} />
+        <Kpi label="Đã thu đủ" value={String(totals.paid)} icon={WalletCards} tone={totals.remaining ? "warning" : "success"} />
+        <Kpi label="Còn phải thu" value={vnd(totals.remaining)} icon={CreditCard} tone={totals.remaining ? "warning" : "success"} />
+      </section>
+      <section className="panel post-arrival-panel">
+        <div className="panel-title">
+          <div>
+            <span className="eyebrow">Delivery & collection</span>
+            <h2>Checklist giao hàng và thu tiền</h2>
+          </div>
+          <Truck size={18} />
+        </div>
+        <div className="post-arrival-grid">
+          {managedOrders.map((order) => {
+            const batch = findOrderBatch(batches, order);
+            const status = normalizeOrderStatus(order.status);
+            const finance = orderFinance(order);
+            const receivedChecked = Boolean(order.receivedVnDate || ["received_vn", "delivered"].includes(status));
+            const shippedChecked = Boolean(order.customerShipped || status === "delivered");
+            const paidChecked = Boolean(order.paidInFull || finance.remainingVnd <= 0);
+            return (
+              <article className="post-arrival-card" key={order.id}>
+                <button className="post-arrival-product" type="button" onClick={() => openOrder(order)}>
+                  <ProductCell order={order} />
+                  <span>{order.id}</span>
+                </button>
+                <div className="post-arrival-meta">
+                  <span>{order.customer || "-"} · {batch?.code || "Chưa xếp chuyến"}</span>
+                  <span>Dự kiến về VN {batch?.arrival || "-"}</span>
+                </div>
+                <label className={`ops-check ${receivedChecked ? "done" : ""}`}>
+                  <input type="checkbox" checked={receivedChecked} disabled={shippedChecked} onChange={(event) => setReceived(order, event.target.checked)} />
+                  <span>Đã về VN</span>
+                  <input type="date" value={order.receivedVnDate || ""} onChange={(event) => updateOrder(order.id, { receivedVnDate: event.target.value, status: status === "sent_vn" && event.target.value ? "received_vn" : status })} />
+                </label>
+                <label className={`ops-check ${shippedChecked ? "done" : ""}`}>
+                  <input type="checkbox" checked={shippedChecked} onChange={(event) => setShipped(order, event.target.checked)} />
+                  <span>Đã ship/giao khách</span>
+                  <input type="date" value={order.customerShippedDate || ""} onChange={(event) => updateOrder(order.id, { customerShippedDate: event.target.value, customerShipped: Boolean(event.target.value), status: event.target.value ? "delivered" : status })} />
+                </label>
+                <label className={`ops-check ${paidChecked ? "done" : ""}`}>
+                  <input type="checkbox" checked={paidChecked} onChange={(event) => setPaid(order, event.target.checked)} />
+                  <span>Đã nhận hết tiền</span>
+                  <input
+                    type="date"
+                    value={order.paidInFullDate || ""}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      updateOrder(order.id, {
+                        paidInFullDate: value,
+                        paidInFull: Boolean(value),
+                        depositVnd: value ? Math.max(money(order.depositVnd), finance.totalThuVnd) : order.depositVnd
+                      });
+                    }}
+                  />
+                </label>
+                <div className="post-arrival-money">
+                  <span>Còn thu</span>
+                  <strong>{vnd(paidChecked ? 0 : finance.remainingVnd)}</strong>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+        {!managedOrders.length && <EmptyState title="Chưa có đơn sau hàng về" body="Các đơn đang về VN, đã nhận ở VN hoặc đã giao khách sẽ tự hiện ở đây để staff tick ngày về, ship và thu đủ tiền." />}
+      </section>
     </div>
   );
 }
