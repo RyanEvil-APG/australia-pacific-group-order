@@ -3630,7 +3630,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
             </Field>
             <Field label="Tiền hàng AUD / sản phẩm">
               <input type="number" min="0" step="0.01" value={draft.aud} onChange={(event) => setDraft({ ...draft, aud: event.target.value })} />
-              <span className="field-hint">Dán link là app tự lấy giá. Nếu giá .90 trở lên, app tự làm tròn lên số nguyên kế tiếp; vẫn sửa tay được.</span>
+              <span className="field-hint">Dán link là app tự lấy giá và làm tròn lên nấc 0.1 AUD; từ .90 lên số nguyên, ví dụ 14.25 -&gt; 14.3, 14.90 -&gt; 15.</span>
             </Field>
             <Field label="Ship Úc AUD"><input type="number" value={draft.shippingAud} onChange={(event) => setDraft({ ...draft, shippingAud: event.target.value })} /></Field>
             <Field label="Cước bay AUD/kg">

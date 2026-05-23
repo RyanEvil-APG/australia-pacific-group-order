@@ -363,10 +363,10 @@ function priceFromValue(value) {
 function roundProductAud(value) {
   const amount = Number(value);
   if (!Number.isFinite(amount) || amount <= 0) return null;
-  const whole = Math.floor(amount);
-  const cents = amount - whole;
-  if (cents >= 0.9 - Number.EPSILON) return Math.ceil(amount);
-  return Math.round(amount * 100) / 100;
+  const rounded = Math.ceil((amount - Number.EPSILON) * 10) / 10;
+  const whole = Math.floor(rounded);
+  if (rounded - whole >= 0.9 - Number.EPSILON) return Math.ceil(rounded);
+  return Math.round(rounded * 100) / 100;
 }
 
 function readJsonLdImage(html) {
