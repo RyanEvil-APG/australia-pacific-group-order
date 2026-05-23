@@ -1558,15 +1558,56 @@ tbody tr.split-bill-row {
 .split-bill-field {
   grid-column: 1 / -1;
   display: grid;
-  gap: 8px;
-  padding: 10px;
+  gap: 10px;
+  padding: 12px;
   background: #fff8e8;
-  border: 1px solid rgba(183, 132, 42, 0.2);
+  border: 1px solid rgba(183, 132, 42, 0.26);
   border-radius: 8px;
 }
 
-.split-bill-field .check-line {
-  color: #7a4d16;
+.split-bill-field.active {
+  background: #fff0f1;
+  border-color: rgba(155, 44, 58, 0.32);
+  box-shadow: inset 4px 0 0 #9b2c3a;
+}
+
+.split-bill-toggle {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.split-bill-toggle input {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  accent-color: #9b2c3a;
+}
+
+.split-bill-toggle span,
+.split-bill-toggle strong,
+.split-bill-toggle em {
+  display: block;
+}
+
+.split-bill-toggle strong {
+  color: #5b2f12;
+  font-size: 0.92rem;
+  font-weight: 950;
+}
+
+.split-bill-field.active .split-bill-toggle strong {
+  color: #842432;
+}
+
+.split-bill-toggle em {
+  margin-top: 2px;
+  color: #746c61;
+  font-size: 0.76rem;
+  font-style: normal;
+  font-weight: 850;
 }
 
 .split-bill-field input:not([type="checkbox"]) {

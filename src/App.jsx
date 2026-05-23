@@ -2316,6 +2316,26 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
                 {orderStatuses.map((status) => <option value={status.id} key={status.id}>{status.label}</option>)}
               </select>
             </Field>
+            <div className={`split-bill-field ${draft.splitBill ? "active" : ""}`}>
+              <label className="split-bill-toggle">
+                <input
+                  type="checkbox"
+                  checked={Boolean(draft.splitBill)}
+                  onChange={(event) => setDraft({ ...draft, splitBill: event.target.checked, splitBillNote: event.target.checked ? draft.splitBillNote : "" })}
+                />
+                <span>
+                  <strong>Tách bill riêng khi mua</strong>
+                  <em>{draft.splitBill ? "Đơn này sẽ nổi bật trong bảng mua hàng." : "Bật lên nếu cần mua bill riêng, dễ thấy khi đi mua."}</em>
+                </span>
+              </label>
+              {draft.splitBill && (
+                <input
+                  value={draft.splitBillNote ?? ""}
+                  placeholder="Ví dụ: bill riêng cho khách này, bill công ty, bill cá nhân..."
+                  onChange={(event) => setDraft({ ...draft, splitBillNote: event.target.value })}
+                />
+              )}
+            </div>
             <Field label="Sản phẩm" wide><input value={draft.product} onChange={(event) => setDraft({ ...draft, product: event.target.value })} /></Field>
             <Field label="Link mua hàng" wide>
               <div className="inline-input-action">
@@ -2379,23 +2399,6 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
                 {accounts.filter((account) => account.active).map((account) => <option value={account.id} key={account.id}>{account.displayName}</option>)}
               </select>
             </Field>
-            <div className="split-bill-field">
-              <label className="check-line">
-                <input
-                  type="checkbox"
-                  checked={Boolean(draft.splitBill)}
-                  onChange={(event) => setDraft({ ...draft, splitBill: event.target.checked, splitBillNote: event.target.checked ? draft.splitBillNote : "" })}
-                />
-                Tách bill riêng khi mua
-              </label>
-              {draft.splitBill && (
-                <input
-                  value={draft.splitBillNote ?? ""}
-                  placeholder="Ví dụ: bill riêng cho khách này, bill công ty, bill cá nhân..."
-                  onChange={(event) => setDraft({ ...draft, splitBillNote: event.target.value })}
-                />
-              )}
-            </div>
             <Field label="Tiền hàng AUD / sản phẩm"><input type="number" value={draft.aud} onChange={(event) => setDraft({ ...draft, aud: event.target.value })} /></Field>
             <Field label="Ship Úc AUD"><input type="number" value={draft.shippingAud} onChange={(event) => setDraft({ ...draft, shippingAud: event.target.value })} /></Field>
             <Field label="Giá AUD/kg"><input type="number" min="0" step="0.01" value={draft.intlShippingAud} onChange={(event) => setDraft({ ...draft, intlShippingAud: event.target.value })} /></Field>
