@@ -558,6 +558,7 @@ function compactDate(value) {
 }
 
 function compactDateDmy(value) {
+  if (!value) return "";
   const [year, month, day] = String(value || today()).split("-");
   return `${day || "00"}${month || "00"}${String(year || "0000").slice(-2)}`;
 }
@@ -584,11 +585,60 @@ function generateOrderCode(order, batch, orders) {
 }
 
 function batchCodeDate(batch) {
-  return batch?.departure || batch?.arrival || batch?.cutoff || today();
+  return batch?.departure || "";
+}
+
+function dateFromValue(value) {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isoDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addDays(value, days) {
+  const date = dateFromValue(value);
+  if (!date) return "";
+  date.setDate(date.getDate() + days);
+  return isoDate(date);
+}
+
+function dayOffset(from, to) {
+  const fromDate = dateFromValue(from);
+  const toDate = dateFromValue(to);
+  if (!fromDate || !toDate) return null;
+  return Math.round((toDate.getTime() - fromDate.getTime()) / 86400000);
+}
+
+function suggestNextBatchDraft(batches) {
+  const latest = [...batches]
+    .filter((batch) => batch.departure)
+    .sort((a, b) => String(b.departure).localeCompare(String(a.departure)))[0];
+  if (!latest) return {};
+
+  let nextDeparture = addDays(latest.departure, 14);
+  while (nextDeparture && nextDeparture < today()) {
+    nextDeparture = addDays(nextDeparture, 14);
+  }
+
+  const cutoffOffset = dayOffset(latest.departure, latest.cutoff) ?? 0;
+  const arrivalOffset = dayOffset(latest.departure, latest.arrival) ?? 4;
+  return {
+    cutoff: addDays(nextDeparture, cutoffOffset),
+    departure: nextDeparture,
+    arrival: addDays(nextDeparture, arrivalOffset)
+  };
 }
 
 function generateBatchCode(batch, batches) {
   const datePart = compactDateDmy(batchCodeDate(batch));
+  if (!datePart) return "";
   const base = `${datePart} Flight`;
   const currentId = batch?.id;
   const usedNumbers = batches
@@ -979,10 +1029,11 @@ function App() {
   }
 
   function openBatch(batch = null) {
-    const nextDraft = { ...emptyBatch, id: batch?.id ?? makeId("DOT"), ...batch };
+    const suggestedDates = batch ? {} : suggestNextBatchDraft(batches);
+    const nextDraft = { ...emptyBatch, ...suggestedDates, id: batch?.id ?? makeId("DOT"), ...batch };
     setDraft({
       ...nextDraft,
-      code: batch?.code ?? generateBatchCode(nextDraft, batches),
+      code: batch?.code ?? (nextDraft.departure ? generateBatchCode(nextDraft, batches) : ""),
       autoCode: !batch?.code
     });
     setModal("batch");
@@ -990,7 +1041,7 @@ function App() {
 
   function saveBatch(event) {
     event.preventDefault();
-    const code = draft.code || generateBatchCode(draft, batches);
+    const code = draft.code || generateBatchCode(draft, batches) || draft.id;
     const { autoCode: _autoCode, ...batchDraft } = draft;
     const nextBatch = { ...batchDraft, id: draft.id || makeId("DOT"), code, freightAud: Math.max(0, Number(draft.freightAud || 0)) };
     setBatches((current) => {
@@ -3066,7 +3117,7 @@ function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderSt
               <input value={draft.code} onChange={(event) => setDraft({ ...draft, code: event.target.value, autoCode: false })} />
               <button type="button" onClick={() => setDraft({ ...draft, code: generateBatchCode(draft, batches), autoCode: true })}>Auto</button>
             </div>
-            <span className="field-hint">Tự tạo theo ngày bay dạng ddmmyy Flight, ví dụ 240526 Flight. Có thể sửa tay nếu cần.</span>
+            <span className="field-hint">Chọn Ngày bay để app tự tạo dạng ddmmyy Flight. Thêm chuyến mới sẽ gợi ý lịch +14 ngày từ chuyến gần nhất.</span>
           </Field>
           <Field label="Tuyến"><input value={draft.route} onChange={(event) => setDraft({ ...draft, route: event.target.value })} /></Field>
           <Field label="Cutoff"><input type="date" value={draft.cutoff} onChange={(event) => updateFlightDate("cutoff", event.target.value)} /></Field>
