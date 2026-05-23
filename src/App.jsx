@@ -557,6 +557,11 @@ function compactDate(value) {
   return String(value || today()).replaceAll("-", "");
 }
 
+function compactDateDmy(value) {
+  const [year, month, day] = String(value || today()).split("-");
+  return `${day || "00"}${month || "00"}${String(year || "0000").slice(-2)}`;
+}
+
 function orderCodeSegment(batch) {
   const raw = String(batch?.code || batch?.id || "NOFLIGHT").toUpperCase();
   return raw.replace(/[^A-Z0-9]/g, "").slice(0, 10) || "NOFLIGHT";
@@ -576,6 +581,29 @@ function generateOrderCode(order, batch, orders) {
       }, 0) + 1;
 
   return `${prefix}-${String(nextNumber).padStart(3, "0")}`;
+}
+
+function batchCodeDate(batch) {
+  return batch?.departure || batch?.arrival || batch?.cutoff || today();
+}
+
+function generateBatchCode(batch, batches) {
+  const datePart = compactDateDmy(batchCodeDate(batch));
+  const base = `${datePart} Flight`;
+  const currentId = batch?.id;
+  const usedNumbers = batches
+    .filter((item) => item.id !== currentId)
+    .map((item) => String(item.code || ""))
+    .map((code) => {
+      const escapedBase = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const match = code.match(new RegExp(`^${escapedBase}(?:\\s+(\\d+))?$`, "i"));
+      if (!match) return null;
+      return match[1] ? Number(match[1]) : 1;
+    })
+    .filter((value) => Number.isFinite(value));
+  if (!usedNumbers.length) return base;
+  const nextNumber = Math.max(...usedNumbers) + 1;
+  return `${base} ${String(nextNumber).padStart(2, "0")}`;
 }
 
 function App() {
@@ -951,14 +979,20 @@ function App() {
   }
 
   function openBatch(batch = null) {
-    setDraft({ ...emptyBatch, id: batch?.id ?? makeId("DOT"), code: batch?.code ?? "", ...batch });
+    const nextDraft = { ...emptyBatch, id: batch?.id ?? makeId("DOT"), ...batch };
+    setDraft({
+      ...nextDraft,
+      code: batch?.code ?? generateBatchCode(nextDraft, batches),
+      autoCode: !batch?.code
+    });
     setModal("batch");
   }
 
   function saveBatch(event) {
     event.preventDefault();
-    const code = draft.code || draft.id;
-    const nextBatch = { ...draft, id: draft.id || makeId("DOT"), code, freightAud: Math.max(0, Number(draft.freightAud || 0)) };
+    const code = draft.code || generateBatchCode(draft, batches);
+    const { autoCode: _autoCode, ...batchDraft } = draft;
+    const nextBatch = { ...batchDraft, id: draft.id || makeId("DOT"), code, freightAud: Math.max(0, Number(draft.freightAud || 0)) };
     setBatches((current) => {
       const exists = current.some((batch) => batch.id === nextBatch.id);
       return exists ? current.map((batch) => (batch.id === nextBatch.id ? nextBatch : batch)) : [nextBatch, ...current];
@@ -1308,6 +1342,7 @@ function App() {
         <BatchModal
           draft={draft}
           setDraft={setDraft}
+          batches={batches}
           orders={orders}
           openOrder={openOrder}
           updateOrderStatus={updateOrderStatus}
@@ -3011,19 +3046,32 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
   );
 }
 
-function BatchModal({ draft, setDraft, orders, openOrder, updateOrderStatus, save, remove, close }) {
+function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderStatus, save, remove, close }) {
   const batchOrders = orders.filter((order) => order.batchId === draft.id);
   const progress = flightOrderProgress(batchOrders);
   const activeBatchOrders = batchOrders.filter((order) => !["delivered", "cancelled"].includes(normalizeOrderStatus(order.status)));
+  function updateFlightDate(field, value) {
+    const nextDraft = { ...draft, [field]: value };
+    setDraft({
+      ...nextDraft,
+      code: draft.autoCode ? generateBatchCode(nextDraft, batches) : draft.code
+    });
+  }
   return (
     <ModalShell title="Sửa / thêm chuyến bay" eyebrow="Flight management" close={close}>
       <form onSubmit={save}>
         <div className="form-grid">
-          <Field label="Mã đợt"><input value={draft.code} onChange={(event) => setDraft({ ...draft, code: event.target.value })} /></Field>
+          <Field label="Mã chuyến">
+            <div className="inline-input-action">
+              <input value={draft.code} onChange={(event) => setDraft({ ...draft, code: event.target.value, autoCode: false })} />
+              <button type="button" onClick={() => setDraft({ ...draft, code: generateBatchCode(draft, batches), autoCode: true })}>Auto</button>
+            </div>
+            <span className="field-hint">Tự tạo theo ngày bay dạng ddmmyy Flight, ví dụ 240526 Flight. Có thể sửa tay nếu cần.</span>
+          </Field>
           <Field label="Tuyến"><input value={draft.route} onChange={(event) => setDraft({ ...draft, route: event.target.value })} /></Field>
-          <Field label="Cutoff"><input type="date" value={draft.cutoff} onChange={(event) => setDraft({ ...draft, cutoff: event.target.value })} /></Field>
-          <Field label="Ngày bay"><input type="date" value={draft.departure} onChange={(event) => setDraft({ ...draft, departure: event.target.value })} /></Field>
-          <Field label="Ngày hàng về VN"><input type="date" value={draft.arrival} onChange={(event) => setDraft({ ...draft, arrival: event.target.value })} /></Field>
+          <Field label="Cutoff"><input type="date" value={draft.cutoff} onChange={(event) => updateFlightDate("cutoff", event.target.value)} /></Field>
+          <Field label="Ngày bay"><input type="date" value={draft.departure} onChange={(event) => updateFlightDate("departure", event.target.value)} /></Field>
+          <Field label="Ngày hàng về VN"><input type="date" value={draft.arrival} onChange={(event) => updateFlightDate("arrival", event.target.value)} /></Field>
           <Field label="Tình trạng">
             <select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })}>
               {batchStatuses.map((status) => <option value={status.id} key={status.id}>{status.label}</option>)}
