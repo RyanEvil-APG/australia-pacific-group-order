@@ -396,7 +396,7 @@ function resolveImageUrl(candidates, target) {
 
 function chemistPreviewFromUrl(target) {
   const host = target.hostname.toLowerCase();
-  const match = target.pathname.match(/\/buy\/(\d+)(?:\/([^/?#]+))?/i);
+  const match = target.pathname.match(/\/buy\/(\d+)(?:[/-]([^/?#]+))?/i);
   if (!host.includes("chemistwarehouse.com.au") || !match) return null;
   const slug = String(match[2] || "")
     .split("-")

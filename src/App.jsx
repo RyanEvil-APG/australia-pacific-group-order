@@ -474,7 +474,7 @@ function productImageSrc(orderOrDraft) {
 function chemistPreviewFromUrl(rawUrl) {
   try {
     const parsed = new URL(String(rawUrl || "").startsWith("www.") ? `https://${rawUrl}` : rawUrl);
-    const match = parsed.pathname.match(/\/buy\/(\d+)(?:\/([^/?#]+))?/i);
+    const match = parsed.pathname.match(/\/buy\/(\d+)(?:[/-]([^/?#]+))?/i);
     if (!parsed.hostname.toLowerCase().includes("chemistwarehouse.com.au") || !match) return null;
     const title = String(match[2] || "")
       .split("-")
