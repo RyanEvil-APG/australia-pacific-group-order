@@ -228,12 +228,36 @@ function normalizeOrderStatus(status) {
   return orderStatuses.some((item) => item.id === nextStatus) ? nextStatus : "waiting_buy";
 }
 
+function chemistPreviewFromUrl(rawUrl) {
+  try {
+    const parsed = new URL(String(rawUrl || "").startsWith("www.") ? `https://${rawUrl}` : rawUrl);
+    const match = parsed.pathname.match(/\/buy\/(\d+)(?:[/-]([^/?#]+))?/i);
+    if (!parsed.hostname.toLowerCase().includes("chemistwarehouse.com.au") || !match) return null;
+    const title = String(match[2] || "")
+      .split("-")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+    return {
+      title,
+      siteName: "Chemist Warehouse",
+      imageUrl: `https://static.chemistwarehouse.com.au/ams/media/pi/${match[1]}/F2D_800.jpg`
+    };
+  } catch {
+    return null;
+  }
+}
+
 function normalizeOrder(order) {
+  const chemistFallback = chemistPreviewFromUrl(order?.productUrl);
+  const productImageUrl = order?.productImageUrl || chemistFallback?.imageUrl || "";
   return {
     ...order,
     productUrl: order?.productUrl ?? "",
-    productImageUrl: order?.productImageUrl ?? "",
-    productImageSource: order?.productImageSource ?? "",
+    product: order?.product || chemistFallback?.title || "",
+    source: order?.source || chemistFallback?.siteName || "",
+    productImageUrl,
+    productImageSource: productImageUrl ? (order?.productImageSource || "auto") : "",
     splitBill: Boolean(order?.splitBill),
     status: normalizeOrderStatus(order?.status)
   };
@@ -473,26 +497,6 @@ function productImageSrc(orderOrDraft) {
   const referer = String(orderOrDraft?.productUrl || "").trim();
   if (looksLikeProductUrl(referer)) params.set("referer", referer);
   return `/api/product-image?${params.toString()}`;
-}
-
-function chemistPreviewFromUrl(rawUrl) {
-  try {
-    const parsed = new URL(String(rawUrl || "").startsWith("www.") ? `https://${rawUrl}` : rawUrl);
-    const match = parsed.pathname.match(/\/buy\/(\d+)(?:[/-]([^/?#]+))?/i);
-    if (!parsed.hostname.toLowerCase().includes("chemistwarehouse.com.au") || !match) return null;
-    const title = String(match[2] || "")
-      .split("-")
-      .filter(Boolean)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
-    return {
-      title,
-      siteName: "Chemist Warehouse",
-      imageUrl: `https://static.chemistwarehouse.com.au/ams/media/pi/${match[1]}/F2D_800.jpg`
-    };
-  } catch {
-    return null;
-  }
 }
 
 function stripDemo(items, demoIds, idKey = "id") {
@@ -795,9 +799,14 @@ function App() {
 
   function saveOrder(event) {
     event.preventDefault();
+    const chemistFallback = chemistPreviewFromUrl(draft.productUrl);
     const nextOrder = normalizeOrder({
       ...draft,
       id: getOrderId(draft),
+      product: draft.product || chemistFallback?.title || "",
+      source: draft.source || chemistFallback?.siteName || "",
+      productImageUrl: draft.productImageUrl || chemistFallback?.imageUrl || "",
+      productImageSource: draft.productImageUrl ? draft.productImageSource : (chemistFallback?.imageUrl ? "auto" : draft.productImageSource),
       quantity: Math.max(1, Number(draft.quantity || 1)),
       weightKg: Math.max(0, Number(draft.weightKg || 0)),
       intlShippingAud: Math.max(0, Number(draft.intlShippingAud || batchFreightAud(batches, draft.batchId) || 0)),
@@ -2359,7 +2368,23 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
             <Field label="Sản phẩm" wide><input value={draft.product} onChange={(event) => setDraft({ ...draft, product: event.target.value })} /></Field>
             <Field label="Link mua hàng" wide>
               <div className="inline-input-action">
-                <input value={draft.productUrl ?? ""} placeholder="Dán link mua hàng, app tự nhận shop và ảnh" onChange={(event) => setDraft({ ...draft, productUrl: event.target.value, source: looksLikeProductUrl(event.target.value) ? "" : draft.source, productImageSource: draft.productImageSource === "manual" ? "manual" : "" })} />
+                <input
+                  value={draft.productUrl ?? ""}
+                  placeholder="Dán link mua hàng, app tự nhận shop và ảnh"
+                  onChange={(event) => {
+                    const nextUrl = event.target.value;
+                    const chemistFallback = chemistPreviewFromUrl(nextUrl);
+                    const isManualImage = draft.productImageSource === "manual";
+                    setDraft({
+                      ...draft,
+                      productUrl: nextUrl,
+                      product: draft.product || chemistFallback?.title || draft.product,
+                      source: chemistFallback?.siteName || (looksLikeProductUrl(nextUrl) ? "" : draft.source),
+                      productImageUrl: isManualImage ? draft.productImageUrl : (chemistFallback?.imageUrl || ""),
+                      productImageSource: isManualImage ? "manual" : (chemistFallback?.imageUrl ? "auto" : "")
+                    });
+                  }}
+                />
                 <button type="button" disabled={!looksLikeProductUrl(draft.productUrl) || previewStatus === "loading"} onClick={() => fetchProductPreview(draft.productUrl, true)}>
                   <RefreshCw size={15} /> Đọc link
                 </button>

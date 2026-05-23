@@ -90,8 +90,32 @@ function normalizeOrderStatus(status) {
   return allowedStatuses.has(nextStatus) ? nextStatus : "waiting_buy";
 }
 
+function chemistPreviewFromRawUrl(rawUrl) {
+  try {
+    const value = String(rawUrl || "").trim();
+    if (!value) return null;
+    const parsed = new URL(value.startsWith("www.") ? `https://${value}` : value);
+    return chemistPreviewFromUrl(parsed);
+  } catch {
+    return null;
+  }
+}
+
 function normalizeOrders(items) {
-  return Array.isArray(items) ? items.map((order) => ({ ...order, status: normalizeOrderStatus(order?.status) })) : [];
+  return Array.isArray(items)
+    ? items.map((order) => {
+        const chemistFallback = chemistPreviewFromRawUrl(order?.productUrl);
+        const productImageUrl = order?.productImageUrl || chemistFallback?.imageUrl || "";
+        return {
+          ...order,
+          product: order?.product || chemistFallback?.title || "",
+          source: order?.source || chemistFallback?.siteName || "",
+          productImageUrl,
+          productImageSource: productImageUrl ? (order?.productImageSource || "auto") : "",
+          status: normalizeOrderStatus(order?.status)
+        };
+      })
+    : [];
 }
 
 function normalizeCustomerTier(tier) {
