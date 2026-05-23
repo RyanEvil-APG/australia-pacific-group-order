@@ -491,9 +491,13 @@ function fileToDataUrl(file) {
 
 function productImageSrc(orderOrDraft) {
   const rawUrl = String(orderOrDraft?.productImageUrl || "").trim();
-  const productUrl = String(orderOrDraft?.productUrl || "").trim();
+  const savedProductUrl = String(orderOrDraft?.productUrl || "").trim();
+  const savedSource = String(orderOrDraft?.source || "").trim();
+  const productUrl = looksLikeProductUrl(savedProductUrl) ? savedProductUrl : (looksLikeProductUrl(savedSource) ? savedSource : "");
   if (!rawUrl && looksLikeProductUrl(productUrl)) {
-    const params = new URLSearchParams({ url: productUrl });
+    const chemistFallback = chemistPreviewFromUrl(productUrl);
+    const params = new URLSearchParams({ url: chemistFallback?.imageUrl || productUrl });
+    if (chemistFallback?.imageUrl) params.set("referer", productUrl);
     return `/api/product-image?${params.toString()}`;
   }
   if (!rawUrl || rawUrl.startsWith("data:") || rawUrl.startsWith("/api/product-image")) return rawUrl;

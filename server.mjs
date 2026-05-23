@@ -438,6 +438,29 @@ function isChemistWarehouseUrl(target) {
   return target?.hostname?.toLowerCase?.().includes("chemistwarehouse.com.au");
 }
 
+function chemistProductId(target) {
+  if (!isChemistWarehouseUrl(target)) return "";
+  return target.pathname.match(/\/(?:buy|pi)\/(\d+)/i)?.[1] || "";
+}
+
+function chemistImageCandidates(target) {
+  const productId = chemistProductId(target);
+  if (!productId) return [];
+  const names = [
+    "F2D_800.jpg",
+    "3DF_800.jpg",
+    "F1D_800.jpg",
+    "2DF_800.jpg",
+    "F2D_400.jpg",
+    "3DF_400.jpg",
+    "F1D_400.jpg",
+    "F2D.jpg",
+    "3DF.jpg",
+    "F1D.jpg"
+  ];
+  return names.map((name) => `https://static.chemistwarehouse.com.au/ams/media/pi/${productId}/${name}`);
+}
+
 async function fetchShopifyImage(target, signal) {
   const match = target.pathname.match(/\/products\/([^/?#]+)/i);
   if (!match) return "";
@@ -561,6 +584,15 @@ async function fetchImageBuffer(target, referer, signal) {
   return { buffer, contentType };
 }
 
+async function fetchChemistCandidateImage(target, referer, signal, currentUrl = "") {
+  for (const candidate of chemistImageCandidates(target)) {
+    if (candidate === currentUrl) continue;
+    const image = await fetchImageBuffer(normalizePreviewUrl(candidate), referer, signal).catch(() => null);
+    if (image) return image;
+  }
+  return null;
+}
+
 async function fetchImageForProxy(rawUrl, rawReferer) {
   const target = normalizePreviewUrl(rawUrl);
   const referer = rawReferer ? normalizePreviewUrl(rawReferer).toString() : target.origin;
@@ -571,20 +603,14 @@ async function fetchImageForProxy(rawUrl, rawReferer) {
     if (directImage) return directImage;
 
     if (isChemistWarehouseUrl(target)) {
-      const preview = await fetchProductPreview(target.toString()).catch(() => null);
-      if (preview?.imageUrl && preview.imageUrl !== target.toString()) {
-        const productPageImage = await fetchImageBuffer(normalizePreviewUrl(preview.imageUrl), target.toString(), controller.signal);
-        if (productPageImage) return productPageImage;
-      }
+      const productPageImage = await fetchChemistCandidateImage(target, target.toString(), controller.signal, target.toString());
+      if (productPageImage) return productPageImage;
     }
 
     const refererUrl = rawReferer ? normalizePreviewUrl(rawReferer) : null;
     if (refererUrl && isChemistWarehouseUrl(refererUrl)) {
-      const preview = await fetchProductPreview(refererUrl.toString()).catch(() => null);
-      if (preview?.imageUrl && preview.imageUrl !== target.toString()) {
-        const fallbackImage = await fetchImageBuffer(normalizePreviewUrl(preview.imageUrl), refererUrl.toString(), controller.signal);
-        if (fallbackImage) return fallbackImage;
-      }
+      const fallbackImage = await fetchChemistCandidateImage(refererUrl, refererUrl.toString(), controller.signal, target.toString());
+      if (fallbackImage) return fallbackImage;
     }
 
     throw new Error("image fetch failed");
