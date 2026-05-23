@@ -102,6 +102,9 @@ const emptyOrder = {
   depositVnd: 0,
   splitBill: false,
   receivedVnDate: "",
+  vnStockLocation: "",
+  vnStockChecked: false,
+  vnStockNote: "",
   customerShipped: false,
   customerShippedDate: "",
   paidInFull: false,
@@ -269,6 +272,9 @@ function normalizeOrder(order) {
     customerShipped: Boolean(order?.customerShipped || normalizeOrderStatus(order?.status) === "delivered"),
     paidInFull: Boolean(order?.paidInFull),
     receivedVnDate: order?.receivedVnDate || "",
+    vnStockLocation: order?.vnStockLocation || "",
+    vnStockChecked: Boolean(order?.vnStockChecked),
+    vnStockNote: order?.vnStockNote || "",
     customerShippedDate: order?.customerShippedDate || "",
     paidInFullDate: order?.paidInFullDate || "",
     status: normalizeOrderStatus(order?.status)
@@ -1193,6 +1199,7 @@ function App() {
             orders={orders}
             filteredOrders={filteredOrders}
             batches={batches}
+            accounts={accounts}
             query={query}
             setQuery={setQuery}
             statusFilter={statusFilter}
@@ -1206,6 +1213,7 @@ function App() {
             openOrder={openOrder}
             openBatch={openBatch}
             openBuyingChecklist={openBuyingChecklist}
+            openAfterArrival={() => setActiveView("after-arrival")}
             updateOrderStatus={updateOrderStatus}
             canSeeProfit={canSeeProfit}
           />
@@ -1245,7 +1253,7 @@ function App() {
         )}
 
         {activeView === "customers" && <CustomersView customers={customers} orders={orders} openCustomer={openCustomer} openOrder={openOrder} />}
-        {activeView === "stock" && <StockView inventory={inventory} openStock={openStock} />}
+        {activeView === "stock" && <StockView inventory={inventory} orders={orders} batches={batches} openStock={openStock} openOrder={openOrder} />}
         {activeView === "flights" && (
           <FlightsView
             batches={batches}
@@ -1268,7 +1276,7 @@ function App() {
         {activeView === "cashflow" && (
           <CashflowView orders={orders} batches={batches} transactions={transactions} openTransaction={openTransaction} openOrder={openOrder} canSeeProfit={canSeeProfit} />
         )}
-        {activeView === "tasks" && <TasksView tasks={tasks} accounts={accounts} orders={orders} batches={batches} openTask={openTask} />}
+        {activeView === "tasks" && <TasksView tasks={tasks} accounts={accounts} orders={orders} batches={batches} openTask={openTask} openOrder={openOrder} openAfterArrival={() => setActiveView("after-arrival")} />}
       </main>
 
       {isSettingsOpen && canManageUsers && (
@@ -1346,6 +1354,88 @@ function Kpi({ label, value, icon: Icon, tone }) {
   );
 }
 
+function orderIsInVn(order, batch) {
+  const status = normalizeOrderStatus(order.status);
+  const batchArrived = Boolean(batch?.arrival && String(batch.arrival) <= today());
+  return Boolean(order.receivedVnDate || ["received_vn", "delivered"].includes(status) || (status === "sent_vn" && batchArrived));
+}
+
+function afterArrivalReminders(orders, batches) {
+  return orders
+    .flatMap((order) => {
+      const batch = findOrderBatch(batches, order);
+      const status = normalizeOrderStatus(order.status);
+      if (status === "cancelled" || !orderIsInVn(order, batch)) return [];
+      const finance = orderFinance(order);
+      const reminders = [];
+      if (!order.receivedVnDate && status === "sent_vn") {
+        reminders.push({ type: "stock", label: "Cần xác nhận về VN", tone: "warning", order, batch, detail: `Dự kiến về ${batch?.arrival || "-"}` });
+      }
+      if (!order.vnStockChecked && !order.customerShipped && status !== "delivered") {
+        reminders.push({ type: "stock", label: "Cần kiểm kho", tone: "warning", order, batch, detail: order.vnStockLocation || "Chưa có vị trí kho" });
+      }
+      if (!order.customerShipped && status !== "delivered") {
+        reminders.push({ type: "ship", label: "Nhắc ship/giao khách", tone: "urgent", order, batch, detail: `${order.customer || "Khách"} · SL ${order.quantity}` });
+      }
+      if (!order.paidInFull && finance.remainingVnd > 0) {
+        reminders.push({ type: "money", label: "Nhắc thu tiền", tone: "urgent", order, batch, detail: `Còn thu ${vnd(finance.remainingVnd)}` });
+      }
+      return reminders;
+    })
+    .sort((a, b) => String(a.batch?.arrival || "9999-12-31").localeCompare(String(b.batch?.arrival || "9999-12-31")));
+}
+
+function TeamPresencePanel({ accounts }) {
+  const activeAccounts = accounts.filter((account) => account.active);
+  return (
+    <section className="panel team-panel">
+      <div className="panel-title">
+        <div>
+          <span className="eyebrow">Team live</span>
+          <h2>Nhân sự đang dùng app</h2>
+        </div>
+        <UserRound size={18} />
+      </div>
+      <div className="team-avatar-grid">
+        {activeAccounts.map((account) => (
+          <div className="team-avatar-card" key={account.id}>
+            <AccountAvatar account={account} />
+            <div>
+              <strong>{account.displayName || account.username}</strong>
+              <span>{roleLabel(account.role)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function OpsReminderPanel({ reminders, openOrder, openAfterArrival }) {
+  const visible = reminders.slice(0, 8);
+  return (
+    <section className="panel ops-reminder-panel">
+      <div className="panel-title">
+        <div>
+          <span className="eyebrow">Auto reminders</span>
+          <h2>Việc cần nhắc sau hàng về</h2>
+        </div>
+        <Bell size={18} />
+      </div>
+      <div className="ops-reminder-list">
+        {visible.map((item, index) => (
+          <button className={`ops-reminder-item ${item.tone}`} type="button" key={`${item.type}-${item.order.id}-${index}`} onClick={() => (openAfterArrival ? openAfterArrival() : openOrder(item.order))}>
+            <span>{item.label}</span>
+            <strong>{item.order.product || item.order.id}</strong>
+            <em>{item.detail}</em>
+          </button>
+        ))}
+        {!visible.length && <EmptyState title="Không có việc trễ sau hàng về" body="Khi đơn đã về VN nhưng chưa kiểm kho, chưa ship hoặc chưa thu đủ tiền, app sẽ tự nhắc ở đây." />}
+      </div>
+    </section>
+  );
+}
+
 function FilterBar({ query, setQuery, statusFilter, setStatusFilter, batchFilter, setBatchFilter, batches, dateFrom, setDateFrom, dateTo, setDateTo }) {
   return (
     <section className="filter-panel">
@@ -1376,7 +1466,8 @@ function FilterBar({ query, setQuery, statusFilter, setStatusFilter, batchFilter
 }
 
 function OverviewView(props) {
-  const { totals, orders, filteredOrders, batches, openOrder, openBatch, openBuyingChecklist, updateOrderStatus, canSeeProfit } = props;
+  const { totals, orders, filteredOrders, batches, accounts, openOrder, openBatch, openBuyingChecklist, openAfterArrival, updateOrderStatus, canSeeProfit } = props;
+  const reminders = afterArrivalReminders(orders, batches);
   const flightTimeline = batches
     .map((batch) => {
       const batchOrders = orders.filter((order) => order.batchId === batch.id);
@@ -1458,6 +1549,11 @@ function OverviewView(props) {
             openBuyingChecklist={openBuyingChecklist}
           />
         </div>
+      </div>
+
+      <div className="overview-ops-row">
+        <TeamPresencePanel accounts={accounts} />
+        <OpsReminderPanel reminders={reminders} openOrder={openOrder} openAfterArrival={openAfterArrival} />
       </div>
 
       <section className="panel">
@@ -1684,7 +1780,15 @@ function CustomersView({ customers, orders, openCustomer, openOrder }) {
   );
 }
 
-function StockView({ inventory, openStock }) {
+function StockView({ inventory, orders, batches, openStock, openOrder }) {
+  const linkedOrderStock = orders
+    .filter((order) => {
+      const status = normalizeOrderStatus(order.status);
+      const batch = findOrderBatch(batches, order);
+      return status !== "cancelled" && !order.customerShipped && status !== "delivered" && orderIsInVn(order, batch);
+    })
+    .map((order) => ({ order, batch: findOrderBatch(batches, order) }));
+
   return (
     <div className="screen-stack">
       <div className="panel-title standalone">
@@ -1698,6 +1802,50 @@ function StockView({ inventory, openStock }) {
         </button>
       </div>
       <div className="panel">
+        <div className="panel-title">
+          <div>
+            <span className="eyebrow">Linked order stock</span>
+            <h2>Hàng của khách đang giữ ở kho VN</h2>
+          </div>
+          <PackageCheck size={18} />
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Order</th>
+                <th>Sản phẩm</th>
+                <th>SL/Kg</th>
+                <th>Khách</th>
+                <th>Chuyến</th>
+                <th>Kho/ô giữ</th>
+                <th>Tình trạng kho</th>
+              </tr>
+            </thead>
+            <tbody>
+              {linkedOrderStock.map(({ order, batch }) => (
+                <tr key={order.id} onClick={() => openOrder(order)}>
+                  <td data-label="Order"><strong>{order.id}</strong><span>Về VN {order.receivedVnDate || batch?.arrival || "-"}</span></td>
+                  <td data-label="Sản phẩm"><ProductCell order={order} /></td>
+                  <td data-label="SL/Kg">{order.quantity}<span>{money(order.weightKg)}kg</span></td>
+                  <td data-label="Khách">{order.customer}<span>{order.phone}</span></td>
+                  <td data-label="Chuyến">{batch?.code || "-"}</td>
+                  <td data-label="Kho/ô giữ">{order.vnStockLocation || "Chưa nhập"}</td>
+                  <td data-label="Tình trạng kho"><span className={`stock-link-chip ${order.vnStockChecked ? "done" : "warn"}`}>{order.vnStockChecked ? "Đã kiểm kho" : "Cần kiểm kho"}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!linkedOrderStock.length && <EmptyState title="Không có hàng của khách đang giữ" body="Khi đơn đã về VN nhưng chưa giao khách, hàng sẽ tự hiện ở đây từ dữ liệu order." />}
+        </div>
+      </div>
+      <div className="panel">
+        <div className="panel-title">
+          <div>
+            <span className="eyebrow">Ready stock</span>
+            <h2>Hàng bán sẵn nhập tay</h2>
+          </div>
+        </div>
         <div className="table-wrap">
           <table>
             <thead>
@@ -2238,7 +2386,8 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder }) {
     if (checked) {
       updateOrder(order.id, {
         status: normalizeOrderStatus(order.status) === "sent_vn" ? "received_vn" : order.status,
-        receivedVnDate: order.receivedVnDate || today()
+        receivedVnDate: order.receivedVnDate || today(),
+        vnStockLocation: order.vnStockLocation || "Kho VN"
       });
       return;
     }
@@ -2325,7 +2474,12 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder }) {
                 <label className={`ops-check ${receivedChecked ? "done" : ""}`}>
                   <input type="checkbox" checked={receivedChecked} disabled={shippedChecked} onChange={(event) => setReceived(order, event.target.checked)} />
                   <span>Đã về VN</span>
-                  <input type="date" value={order.receivedVnDate || ""} onChange={(event) => updateOrder(order.id, { receivedVnDate: event.target.value, status: status === "sent_vn" && event.target.value ? "received_vn" : status })} />
+                  <input type="date" value={order.receivedVnDate || ""} onChange={(event) => updateOrder(order.id, { receivedVnDate: event.target.value, vnStockLocation: event.target.value ? (order.vnStockLocation || "Kho VN") : order.vnStockLocation, status: status === "sent_vn" && event.target.value ? "received_vn" : status })} />
+                </label>
+                <label className={`ops-check ${order.vnStockChecked ? "done" : ""}`}>
+                  <input type="checkbox" checked={Boolean(order.vnStockChecked)} onChange={(event) => updateOrder(order.id, { vnStockChecked: event.target.checked })} />
+                  <span>Đã kiểm kho</span>
+                  <input value={order.vnStockLocation || ""} placeholder="Kho/ô giữ hàng" onChange={(event) => updateOrder(order.id, { vnStockLocation: event.target.value })} />
                 </label>
                 <label className={`ops-check ${shippedChecked ? "done" : ""}`}>
                   <input type="checkbox" checked={shippedChecked} onChange={(event) => setShipped(order, event.target.checked)} />
@@ -2352,6 +2506,7 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder }) {
                   <span>Còn thu</span>
                   <strong>{vnd(paidChecked ? 0 : finance.remainingVnd)}</strong>
                 </div>
+                <input className="post-arrival-note" value={order.vnStockNote || ""} placeholder="Ghi chú kho: thiếu món, chờ khách lấy, địa chỉ ship..." onChange={(event) => updateOrder(order.id, { vnStockNote: event.target.value })} />
               </article>
             );
           })}
@@ -2452,7 +2607,8 @@ function CashflowView({ orders, batches, transactions, openTransaction, openOrde
   );
 }
 
-function TasksView({ tasks, accounts, orders, batches, openTask }) {
+function TasksView({ tasks, accounts, orders, batches, openTask, openOrder, openAfterArrival }) {
+  const reminders = afterArrivalReminders(orders, batches);
   return (
     <div className="screen-stack">
       <div className="panel-title standalone">
@@ -2465,6 +2621,7 @@ function TasksView({ tasks, accounts, orders, batches, openTask }) {
           Thêm việc
         </button>
       </div>
+      <OpsReminderPanel reminders={reminders} openOrder={openOrder} openAfterArrival={openAfterArrival} />
       <div className="task-board-grid">
         {tasks.map((task) => {
           const linkedOrder = orders.find((order) => order.id === task.linkedOrderId);

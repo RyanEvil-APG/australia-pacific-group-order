@@ -115,6 +115,9 @@ function normalizeOrders(items) {
           customerShipped: Boolean(order?.customerShipped || normalizeOrderStatus(order?.status) === "delivered"),
           paidInFull: Boolean(order?.paidInFull),
           receivedVnDate: order?.receivedVnDate || "",
+          vnStockLocation: order?.vnStockLocation || "",
+          vnStockChecked: Boolean(order?.vnStockChecked),
+          vnStockNote: order?.vnStockNote || "",
           customerShippedDate: order?.customerShippedDate || "",
           paidInFullDate: order?.paidInFullDate || "",
           status: normalizeOrderStatus(order?.status)

@@ -405,6 +405,95 @@ th span {
   min-width: 0;
 }
 
+.overview-ops-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.34fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.team-panel,
+.ops-reminder-panel {
+  overflow: hidden;
+}
+
+.team-avatar-grid {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.team-avatar-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  background: #fffdf8;
+  border: 1px solid rgba(33, 29, 23, 0.08);
+  border-radius: 8px;
+}
+
+.team-avatar-card .account-avatar {
+  width: 52px;
+  height: 52px;
+  font-size: 1rem;
+}
+
+.team-avatar-card strong,
+.team-avatar-card span {
+  display: block;
+}
+
+.team-avatar-card span {
+  margin-top: 2px;
+  color: #746c61;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.ops-reminder-list {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.ops-reminder-item {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.34fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  color: #211d17;
+  text-align: left;
+  background: #fffdf8;
+  border: 1px solid rgba(33, 29, 23, 0.09);
+  border-radius: 8px;
+}
+
+.ops-reminder-item.urgent {
+  background: #fff3f4;
+  border-color: rgba(155, 44, 58, 0.16);
+}
+
+.ops-reminder-item.warning {
+  background: #fff7ed;
+}
+
+.ops-reminder-item span,
+.ops-reminder-item em {
+  color: #746c61;
+  font-size: 0.76rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.ops-reminder-item strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .overview-buying-board {
   grid-area: buying;
   display: grid;
@@ -1631,6 +1720,12 @@ tbody tr.split-bill-row {
   font-size: 0.82rem;
 }
 
+.ops-check input:not([type="checkbox"]) {
+  min-height: 34px;
+  padding: 0 8px;
+  font-size: 0.82rem;
+}
+
 .post-arrival-money {
   display: flex;
   align-items: center;
@@ -1650,6 +1745,33 @@ tbody tr.split-bill-row {
 
 .post-arrival-money strong {
   color: #9b2c3a;
+}
+
+.post-arrival-note {
+  min-height: 38px;
+  padding: 0 10px;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.12);
+  border-radius: 8px;
+  font-weight: 850;
+}
+
+.stock-link-chip {
+  display: inline-flex;
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.stock-link-chip.done {
+  color: #0b7658;
+  background: #edf9f4;
+}
+
+.stock-link-chip.warn {
+  color: #9b2c3a;
+  background: #fff3f4;
 }
 
 .task-card {
@@ -2113,6 +2235,10 @@ tbody tr.split-bill-row {
       "packing";
   }
 
+  .overview-ops-row {
+    grid-template-columns: 1fr;
+  }
+
   .overview-buying-board,
   .overview-buying-list {
     max-height: none;
@@ -2303,6 +2429,10 @@ tbody tr.split-bill-row {
 
   .flight-order-actions button {
     flex: 1 1 120px;
+  }
+
+  .ops-reminder-item {
+    grid-template-columns: 1fr;
   }
 
   .post-arrival-grid {
