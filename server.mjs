@@ -570,6 +570,14 @@ async function fetchImageForProxy(rawUrl, rawReferer) {
     const directImage = await fetchImageBuffer(target, referer, controller.signal);
     if (directImage) return directImage;
 
+    if (isChemistWarehouseUrl(target)) {
+      const preview = await fetchProductPreview(target.toString()).catch(() => null);
+      if (preview?.imageUrl && preview.imageUrl !== target.toString()) {
+        const productPageImage = await fetchImageBuffer(normalizePreviewUrl(preview.imageUrl), target.toString(), controller.signal);
+        if (productPageImage) return productPageImage;
+      }
+    }
+
     const refererUrl = rawReferer ? normalizePreviewUrl(rawReferer) : null;
     if (refererUrl && isChemistWarehouseUrl(refererUrl)) {
       const preview = await fetchProductPreview(refererUrl.toString()).catch(() => null);

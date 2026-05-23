@@ -491,11 +491,15 @@ function fileToDataUrl(file) {
 
 function productImageSrc(orderOrDraft) {
   const rawUrl = String(orderOrDraft?.productImageUrl || "").trim();
+  const productUrl = String(orderOrDraft?.productUrl || "").trim();
+  if (!rawUrl && looksLikeProductUrl(productUrl)) {
+    const params = new URLSearchParams({ url: productUrl });
+    return `/api/product-image?${params.toString()}`;
+  }
   if (!rawUrl || rawUrl.startsWith("data:") || rawUrl.startsWith("/api/product-image")) return rawUrl;
   if (!/^https?:\/\//i.test(rawUrl)) return rawUrl;
   const params = new URLSearchParams({ url: rawUrl });
-  const referer = String(orderOrDraft?.productUrl || "").trim();
-  if (looksLikeProductUrl(referer)) params.set("referer", referer);
+  if (looksLikeProductUrl(productUrl)) params.set("referer", productUrl);
   return `/api/product-image?${params.toString()}`;
 }
 
