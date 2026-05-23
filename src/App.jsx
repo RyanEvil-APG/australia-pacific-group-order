@@ -346,7 +346,26 @@ function autoBatchForOrder(batches, orderDate = today()) {
 }
 
 function batchFreightAud(batches, batchId) {
-  return money(batches.find((batch) => batch.id === batchId)?.freightAud);
+  return money(findOrderBatch(batches, { batchId })?.freightAud);
+}
+
+function findOrderBatch(batches, order) {
+  const orderBatchId = String(order?.batchId || "");
+  if (!orderBatchId) return null;
+  return batches.find((batch) => String(batch.id || "") === orderBatchId || String(batch.code || "") === orderBatchId) ?? null;
+}
+
+function batchHasFreight(batch) {
+  return Boolean(batch) && Object.prototype.hasOwnProperty.call(batch, "freightAud");
+}
+
+function orderWithBatchFreight(order, batch) {
+  if (!batchHasFreight(batch)) return normalizeOrder(order);
+  return normalizeOrder({
+    ...order,
+    batchId: batch.id,
+    intlShippingAud: money(batch.freightAud)
+  });
 }
 
 function flightTimelineStage(batch) {
@@ -625,6 +644,23 @@ function App() {
   }
 
   React.useEffect(() => {
+    if (!batches.length) return;
+    setOrders((current) => {
+      let changed = false;
+      const nextOrders = current.map((order) => {
+        const batch = findOrderBatch(batches, order);
+        if (!batchHasFreight(batch)) return order;
+        const nextOrder = orderWithBatchFreight(order, batch);
+        if (nextOrder.batchId !== order.batchId || money(nextOrder.intlShippingAud) !== money(order.intlShippingAud)) {
+          changed = true;
+        }
+        return nextOrder;
+      });
+      return changed ? nextOrders : current;
+    });
+  }, [batches]);
+
+  React.useEffect(() => {
     if (!sessionToken || !currentAccountId) return;
     let ignore = false;
     fetch("/api/state", { headers: { Authorization: `Bearer ${sessionToken}` } })
@@ -789,17 +825,17 @@ function App() {
     const defaultDate = order?.orderDate ?? today();
     const autoBatch = order ? null : autoBatchForOrder(batches, defaultDate);
     const defaultBatchId = order?.batchId ?? autoBatch?.id ?? "";
-    const defaultBatch = batches.find((batch) => batch.id === defaultBatchId);
+    const defaultBatch = findOrderBatch(batches, { batchId: defaultBatchId });
     setDraft({
       ...emptyOrder,
       id: order?.id ?? generateOrderCode({ orderDate: defaultDate, batchId: defaultBatchId }, defaultBatch, orders),
       orderDate: defaultDate,
-      batchId: defaultBatchId,
       supervisorId: order?.supervisorId ?? "ryan",
       assigneeId: order?.assigneeId ?? "staff-vn",
       buyerId: order?.buyerId ?? "staff-vn",
       ...normalizeOrder(order),
-      intlShippingAud: money(order?.intlShippingAud) || money(defaultBatch?.freightAud) || 0,
+      batchId: defaultBatch?.id || defaultBatchId,
+      intlShippingAud: batchHasFreight(defaultBatch) ? money(defaultBatch.freightAud) : money(order?.intlShippingAud) || 0,
       customerTier: normalizeCustomerTier(order?.customerTier)
     });
     setModal("order");
@@ -817,7 +853,9 @@ function App() {
       productImageSource: draft.productImageUrl ? draft.productImageSource : (chemistFallback?.imageUrl ? "auto" : draft.productImageSource),
       quantity: Math.max(1, Number(draft.quantity || 1)),
       weightKg: Math.max(0, Number(draft.weightKg || 0)),
-      intlShippingAud: Math.max(0, Number(draft.intlShippingAud || batchFreightAud(batches, draft.batchId) || 0)),
+      intlShippingAud: batchHasFreight(findOrderBatch(batches, draft))
+        ? batchFreightAud(batches, draft.batchId)
+        : Math.max(0, Number(draft.intlShippingAud || 0)),
       finalWeightRateVnd: Math.max(0, Number(draft.finalWeightRateVnd || defaultFinalWeightRateVnd)),
       customerTier: normalizeCustomerTier(draft.customerTier)
     });
@@ -858,7 +896,7 @@ function App() {
       const exists = current.some((batch) => batch.id === nextBatch.id);
       return exists ? current.map((batch) => (batch.id === nextBatch.id ? nextBatch : batch)) : [nextBatch, ...current];
     });
-    setOrders((current) => current.map((order) => (order.batchId === nextBatch.id ? normalizeOrder({ ...order, intlShippingAud: nextBatch.freightAud }) : order)));
+    setOrders((current) => current.map((order) => (findOrderBatch([nextBatch], order) ? orderWithBatchFreight(order, nextBatch) : order)));
     setModal(null);
   }
 
