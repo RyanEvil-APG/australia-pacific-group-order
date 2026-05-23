@@ -284,6 +284,8 @@ function normalizeOrder(order) {
     vnStockNote: order?.vnStockNote || "",
     customerShippedDate: order?.customerShippedDate || "",
     paidInFullDate: order?.paidInFullDate || "",
+    createdAt: order?.createdAt || "",
+    updatedAt: order?.updatedAt || "",
     status: normalizeOrderStatus(order?.status)
   };
 }
@@ -419,13 +421,23 @@ function orderSortTime(order, batch) {
   return firstDate ?? 0;
 }
 
+function orderCreatedTime(order) {
+  const time = Date.parse(order?.createdAt || "");
+  return Number.isFinite(time) ? time : 0;
+}
+
+function orderDeskSortTime(order, batch) {
+  if (isArchivedOrder(order)) return orderSortTime(order, batch);
+  return orderCreatedTime(order) || orderSortTime(order, batch);
+}
+
 function compareOrdersForDesk(a, b, batches) {
   const aArchived = isArchivedOrder(a);
   const bArchived = isArchivedOrder(b);
   if (aArchived !== bArchived) return aArchived ? 1 : -1;
   const aBatch = findOrderBatch(batches, a);
   const bBatch = findOrderBatch(batches, b);
-  const timeDiff = orderSortTime(b, bBatch) - orderSortTime(a, aBatch);
+  const timeDiff = orderDeskSortTime(b, bBatch) - orderDeskSortTime(a, aBatch);
   if (timeDiff !== 0) return timeDiff;
   const statusRank = { waiting_buy: 0, purchased: 1, sent_vn: 2, received_vn: 3, delivered: 8, cancelled: 9 };
   const rankDiff = (statusRank[normalizeOrderStatus(a.status)] ?? 5) - (statusRank[normalizeOrderStatus(b.status)] ?? 5);
@@ -1173,9 +1185,12 @@ function App() {
     const quantity = Math.max(1, Number(draft.quantity || 1));
     const unitWeightKg = Math.max(0, Number(draft.unitWeightKg ?? 0));
     const totalWeightKg = unitWeightKg * quantity;
+    const orderId = getOrderId(draft);
+    const existingOrder = orders.find((order) => order.id === orderId);
+    const nowIso = new Date().toISOString();
     const nextOrder = normalizeOrder({
       ...draft,
-      id: getOrderId(draft),
+      id: orderId,
       product: draft.product || chemistFallback?.title || "",
       source: draft.source || chemistFallback?.siteName || "",
       productImageUrl: draft.productImageUrl || chemistFallback?.imageUrl || "",
@@ -1187,7 +1202,9 @@ function App() {
         ? batchFreightAud(batches, draft.batchId)
         : Math.max(0, Number(draft.intlShippingAud || 0)),
       finalWeightRateVnd: Math.max(0, Number(draft.finalWeightRateVnd || defaultFinalWeightRateVnd)),
-      customerTier: normalizeCustomerTier(draft.customerTier)
+      customerTier: normalizeCustomerTier(draft.customerTier),
+      createdAt: draft.createdAt || existingOrder?.createdAt || nowIso,
+      updatedAt: nowIso
     });
     setOrders((current) => {
       const exists = current.some((order) => order.id === nextOrder.id);
