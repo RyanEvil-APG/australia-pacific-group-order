@@ -212,6 +212,11 @@ function aud(value) {
   return `A$${formatter.format(Number(value || 0))}`;
 }
 
+function audPrice(value) {
+  const amount = Number(value || 0);
+  return `A$${amount.toLocaleString("vi-VN", { minimumFractionDigits: amount % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
+}
+
 function kg(value) {
   return Number(value || 0).toLocaleString("vi-VN", { maximumFractionDigits: 2 });
 }
@@ -3351,7 +3356,6 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
   async function fetchProductPreview(urlValue = draft.productUrl, force = false) {
     const url = String(urlValue || "").trim();
     if (!sessionToken || !looksLikeProductUrl(url)) return;
-    if (!force && draft.productImageSource === "manual") return;
     setPreviewStatus("loading");
     setPreviewError("");
     try {
@@ -3370,16 +3374,24 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
       lastPreviewUrlRef.current = url;
       setDraft((current) => {
         if (String(current.productUrl || "").trim() !== url) return current;
+        const nextAud = money(data.priceAud);
+        const shouldApplyPrice = nextAud > 0 && (force || money(current.aud) <= 0);
         return {
           ...current,
           product: current.product || data.title || current.product,
           source: current.source || data.siteName || current.source,
-          productImageUrl: data.imageUrl || current.productImageUrl,
-          productImageSource: data.imageUrl ? "auto" : current.productImageSource
+          aud: shouldApplyPrice ? nextAud : current.aud,
+          productImageUrl: current.productImageSource === "manual" ? current.productImageUrl : (data.imageUrl || current.productImageUrl),
+          productImageSource: current.productImageSource === "manual" ? "manual" : (data.imageUrl ? "auto" : current.productImageSource)
         };
       });
-      setPreviewStatus(data.imageUrl ? "done" : "error");
-      setPreviewError(data.imageUrl ? "" : "Đã nhận shop/link nhưng site này không trả ảnh rõ ràng. Upload ảnh tay để chắc nhất.");
+      const hasPrice = money(data.priceAud) > 0;
+      setPreviewStatus(data.imageUrl || hasPrice ? "done" : "error");
+      setPreviewError(
+        data.imageUrl || hasPrice
+          ? (hasPrice ? `Đã lấy giá ${audPrice(data.rawPriceAud || data.priceAud)}${data.rawPriceAud && data.priceAud !== data.rawPriceAud ? `, làm tròn thành ${audPrice(data.priceAud)}` : ""}.` : "")
+          : "Đã nhận shop/link nhưng site này không trả ảnh hoặc giá rõ ràng. Upload ảnh tay và nhập giá tay để chắc nhất."
+      );
     } catch (error) {
       const chemistFallback = chemistPreviewFromUrl(url);
       if (chemistFallback?.imageUrl) {
@@ -3390,8 +3402,8 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
             ...current,
             product: current.product || chemistFallback.title || current.product,
             source: current.source || chemistFallback.siteName,
-            productImageUrl: chemistFallback.imageUrl,
-            productImageSource: "auto"
+            productImageUrl: current.productImageSource === "manual" ? current.productImageUrl : chemistFallback.imageUrl,
+            productImageSource: current.productImageSource === "manual" ? "manual" : "auto"
           };
         });
         setPreviewStatus("done");
@@ -3413,11 +3425,11 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
 
   React.useEffect(() => {
     const url = String(draft.productUrl || "").trim();
-    if (!url || !looksLikeProductUrl(url) || draft.productImageSource === "manual") return undefined;
-    if (lastPreviewUrlRef.current === url && draft.productImageUrl) return undefined;
+    if (!url || !looksLikeProductUrl(url)) return undefined;
+    if (lastPreviewUrlRef.current === url && draft.productImageUrl && money(draft.aud) > 0) return undefined;
     const timeout = window.setTimeout(() => fetchProductPreview(url, false), 800);
     return () => window.clearTimeout(timeout);
-  }, [draft.productUrl, sessionToken]);
+  }, [draft.productUrl, draft.productImageUrl, draft.aud, sessionToken]);
 
   return (
     <ModalShell title="Sửa / thêm đơn hàng" eyebrow="Order management" close={close}>
@@ -3591,7 +3603,10 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
                 {accounts.filter((account) => account.active).map((account) => <option value={account.id} key={account.id}>{account.displayName}</option>)}
               </select>
             </Field>
-            <Field label="Tiền hàng AUD / sản phẩm"><input type="number" value={draft.aud} onChange={(event) => setDraft({ ...draft, aud: event.target.value })} /></Field>
+            <Field label="Tiền hàng AUD / sản phẩm">
+              <input type="number" min="0" step="0.01" value={draft.aud} onChange={(event) => setDraft({ ...draft, aud: event.target.value })} />
+              <span className="field-hint">Dán link rồi bấm Đọc link để tự lấy giá. Nếu giá .90 trở lên, app tự làm tròn lên số nguyên kế tiếp; vẫn sửa tay được.</span>
+            </Field>
             <Field label="Ship Úc AUD"><input type="number" value={draft.shippingAud} onChange={(event) => setDraft({ ...draft, shippingAud: event.target.value })} /></Field>
             <Field label="Cước bay AUD/kg">
               <input type="number" min="0" step="0.01" value={draft.intlShippingAud} onChange={(event) => setDraft({ ...draft, intlShippingAud: event.target.value })} />

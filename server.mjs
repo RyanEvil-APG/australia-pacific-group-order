@@ -340,6 +340,35 @@ function imageFromValue(value) {
   return "";
 }
 
+function priceFromValue(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) && value > 0 ? value : null;
+  if (typeof value === "string") {
+    const normalized = value.replace(/,/g, "").match(/\d+(?:\.\d+)?/);
+    const parsed = normalized ? Number(normalized[0]) : NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const parsed = priceFromValue(item);
+      if (parsed !== null) return parsed;
+    }
+  }
+  if (typeof value === "object") {
+    return priceFromValue(value.amount ?? value.value ?? value.price ?? value.lowPrice ?? value.highPrice);
+  }
+  return null;
+}
+
+function roundProductAud(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const whole = Math.floor(amount);
+  const cents = amount - whole;
+  if (cents >= 0.9 - Number.EPSILON) return Math.ceil(amount);
+  return Math.round(amount * 100) / 100;
+}
+
 function readJsonLdImage(html) {
   for (const match of html.matchAll(/<script\b[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
     try {
@@ -361,6 +390,63 @@ function readJsonLdImage(html) {
     }
   }
   return "";
+}
+
+function readJsonLdPrice(html) {
+  for (const match of html.matchAll(/<script\b[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      const parsed = JSON.parse(decodeHtml(match[1]));
+      const queue = Array.isArray(parsed) ? [...parsed] : [parsed];
+      while (queue.length) {
+        const item = queue.shift();
+        if (!item || typeof item !== "object") continue;
+        const type = Array.isArray(item["@type"]) ? item["@type"].join(" ") : String(item["@type"] || "");
+        const directPrice = priceFromValue(item.price ?? item.lowPrice ?? item.highPrice);
+        const offerPrice = priceFromValue(item.offers);
+        if (/product|offer|aggregateoffer/i.test(type) && (directPrice !== null || offerPrice !== null)) {
+          return directPrice ?? offerPrice;
+        }
+        for (const value of Object.values(item)) {
+          if (Array.isArray(value)) queue.push(...value);
+          else if (value && typeof value === "object") queue.push(value);
+        }
+      }
+    } catch {
+      // Ignore malformed JSON-LD blocks from ecommerce templates.
+    }
+  }
+  return null;
+}
+
+function readEmbeddedPrice(html) {
+  const normalized = html.replace(/\\u002F/g, "/").replace(/\\\//g, "/").replace(/&quot;/g, "\"");
+  const structuredPatterns = [
+    /"prices"\s*:\s*\[\s*\{[\s\S]{0,2500}?"amount"\s*:\s*([0-9]+(?:\.[0-9]+)?)/i,
+    /"price"\s*:\s*\{\s*"value"\s*:\s*\{\s*"amount"\s*:\s*([0-9]+(?:\.[0-9]+)?)/i,
+    /"salePrice"\s*:\s*\{\s*"amount"\s*:\s*([0-9]+(?:\.[0-9]+)?)/i,
+    /"currentPrice"\s*:\s*\{\s*"amount"\s*:\s*([0-9]+(?:\.[0-9]+)?)/i,
+    /"priceAmount"\s*:\s*"?([0-9]+(?:\.[0-9]+)?)"?/i
+  ];
+  for (const pattern of structuredPatterns) {
+    const parsed = priceFromValue(normalized.match(pattern)?.[1]);
+    if (parsed !== null && parsed < 10000) return parsed;
+  }
+
+  const visiblePrices = [...decodeHtml(normalized).matchAll(/\$\s*([0-9]{1,4}(?:\.[0-9]{1,2})?)/g)]
+    .map((match) => Number(match[1]))
+    .filter((value) => Number.isFinite(value) && value > 0.5 && value < 10000);
+  return visiblePrices.length ? Math.min(...visiblePrices) : null;
+}
+
+function readProductPrice(html) {
+  const metaPrice = priceFromValue(readMeta(html, [
+    "product:price:amount",
+    "og:price:amount",
+    "twitter:data1",
+    "price",
+    "sale_price"
+  ]));
+  return metaPrice ?? readJsonLdPrice(html) ?? readEmbeddedPrice(html);
 }
 
 function readSrcset(srcset = "") {
@@ -469,9 +555,9 @@ function chemistImageCandidates(target) {
   return names.map((name) => `https://static.chemistwarehouse.com.au/ams/media/pi/${productId}/${name}`);
 }
 
-async function fetchShopifyImage(target, signal) {
+async function fetchShopifyPreview(target, signal) {
   const match = target.pathname.match(/\/products\/([^/?#]+)/i);
-  if (!match) return "";
+  if (!match) return {};
   const productJsonUrl = new URL(`/products/${match[1]}.js`, target.origin);
   const response = await fetch(productJsonUrl, {
     signal,
@@ -480,12 +566,18 @@ async function fetchShopifyImage(target, signal) {
       accept: "application/json,text/plain,*/*"
     }
   }).catch(() => null);
-  if (!response?.ok) return "";
+  if (!response?.ok) return {};
   try {
     const product = await response.json();
-    return imageFromValue(product.featured_image || product.image || product.images);
+    const variantPrice = priceFromValue(product.variants?.[0]?.price);
+    const productPrice = priceFromValue(product.price ?? product.price_min);
+    const rawPriceAud = variantPrice !== null ? variantPrice / 100 : (productPrice !== null ? productPrice / 100 : null);
+    return {
+      imageUrl: imageFromValue(product.featured_image || product.image || product.images),
+      rawPriceAud
+    };
   } catch {
-    return "";
+    return {};
   }
 }
 
@@ -510,7 +602,7 @@ async function fetchProductPreview(rawUrl) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 9000);
   try {
-    const shopifyImage = await fetchShopifyImage(target, controller.signal);
+    const shopifyPreview = await fetchShopifyPreview(target, controller.signal);
     const response = await fetch(target, {
       signal: controller.signal,
       redirect: "follow",
@@ -538,7 +630,7 @@ async function fetchProductPreview(rawUrl) {
     const siteName = readMeta(html, ["og:site_name", "application-name"]) || target.hostname.replace(/^www\./, "");
     const imageUrl = resolveImageUrl(
       [
-        { value: shopifyImage, hint: "shopify product image" },
+        { value: shopifyPreview.imageUrl, hint: "shopify product image" },
         { value: readMeta(html, ["og:image:secure_url", "og:image", "twitter:image", "twitter:image:src"]), hint: "social meta image" },
         { value: readJsonLdImage(html), hint: "json ld product image" },
         { value: readLinkImage(html), hint: "link image" },
@@ -548,12 +640,16 @@ async function fetchProductPreview(rawUrl) {
       ],
       target
     );
+    const rawPriceAud = readProductPrice(html) ?? shopifyPreview.rawPriceAud ?? null;
+    const priceAud = roundProductAud(rawPriceAud);
     return {
       ok: true,
       url: target.toString(),
       title: title || chemistFallback?.title || "",
       siteName: siteName || chemistFallback?.siteName || target.hostname.replace(/^www\./, ""),
-      imageUrl
+      imageUrl,
+      rawPriceAud,
+      priceAud
     };
   } catch (error) {
     if (chemistFallback?.imageUrl) {
@@ -562,7 +658,9 @@ async function fetchProductPreview(rawUrl) {
         url: target.toString(),
         title: chemistFallback.title,
         siteName: chemistFallback.siteName,
-        imageUrl: chemistFallback.imageUrl
+        imageUrl: chemistFallback.imageUrl,
+        rawPriceAud: null,
+        priceAud: null
       };
     }
     throw error;
