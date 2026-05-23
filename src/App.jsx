@@ -100,7 +100,6 @@ const emptyOrder = {
   totalThuVnd: 0,
   depositVnd: 0,
   splitBill: false,
-  splitBillNote: "",
   note: ""
 };
 
@@ -226,7 +225,6 @@ function normalizeOrder(order) {
     productImageUrl: order?.productImageUrl ?? "",
     productImageSource: order?.productImageSource ?? "",
     splitBill: Boolean(order?.splitBill),
-    splitBillNote: order?.splitBillNote ?? "",
     status: normalizeOrderStatus(order?.status)
   };
 }
@@ -667,7 +665,7 @@ function App() {
   const filteredOrders = React.useMemo(() => {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
     return orders.filter((order) => {
-      const text = `${order.id} ${order.customer} ${order.phone} ${order.product} ${order.source} ${order.productUrl} ${order.splitBill ? "tach bill tách bill split bill" : ""} ${order.splitBillNote}`.toLowerCase();
+      const text = `${order.id} ${order.customer} ${order.phone} ${order.product} ${order.source} ${order.productUrl} ${order.splitBill ? "tach bill tách bill split bill" : ""}`.toLowerCase();
       const matchesQuery = text.includes(normalizedQuery);
       const matchesStatus = statusFilter === "all" || normalizeOrderStatus(order.status) === statusFilter;
       const matchesBatch = batchFilter === "all" || order.batchId === batchFilter;
@@ -1408,9 +1406,7 @@ function ProductCell({ order }) {
         <strong>{order.product || "Chưa nhập sản phẩm"}</strong>
         <span>SL: {order.quantity} · {money(order.weightKg)}kg</span>
         {order.splitBill && (
-          <em className="split-bill-badge">
-            Tách bill riêng{order.splitBillNote ? ` · ${order.splitBillNote}` : ""}
-          </em>
+          <em className="split-bill-badge">Tách bill riêng</em>
         )}
       </div>
     </div>
@@ -2321,20 +2317,10 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
                 <input
                   type="checkbox"
                   checked={Boolean(draft.splitBill)}
-                  onChange={(event) => setDraft({ ...draft, splitBill: event.target.checked, splitBillNote: event.target.checked ? draft.splitBillNote : "" })}
+                  onChange={(event) => setDraft({ ...draft, splitBill: event.target.checked })}
                 />
-                <span>
-                  <strong>Tách bill riêng khi mua</strong>
-                  <em>{draft.splitBill ? "Đơn này sẽ nổi bật trong bảng mua hàng." : "Bật lên nếu cần mua bill riêng, dễ thấy khi đi mua."}</em>
-                </span>
+                <strong>Tách bill riêng khi mua</strong>
               </label>
-              {draft.splitBill && (
-                <input
-                  value={draft.splitBillNote ?? ""}
-                  placeholder="Ví dụ: bill riêng cho khách này, bill công ty, bill cá nhân..."
-                  onChange={(event) => setDraft({ ...draft, splitBillNote: event.target.value })}
-                />
-              )}
             </div>
             <Field label="Sản phẩm" wide><input value={draft.product} onChange={(event) => setDraft({ ...draft, product: event.target.value })} /></Field>
             <Field label="Link mua hàng" wide>
@@ -2411,12 +2397,6 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
             <Field label="Note" wide><textarea value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} /></Field>
           </div>
           <div className="auto-summary">
-            {draft.splitBill && (
-              <div className="summary-split-bill">
-                <strong>Tách bill riêng</strong>
-                <span>{draft.splitBillNote || "Order này cần bill riêng khi đi mua."}</span>
-              </div>
-            )}
             <div className="summary-hero"><span>Còn phải thu</span><strong>{vnd(finance.remainingVnd)}</strong></div>
             <div className="summary-hero"><span>Tổng thu</span><strong>{vnd(finance.totalThuVnd)}</strong></div>
             <div><span>Tổng chi phí gốc</span><strong>{vnd(finance.totalCostVnd)}</strong></div>

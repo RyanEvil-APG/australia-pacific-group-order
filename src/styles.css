@@ -1558,7 +1558,6 @@ tbody tr.split-bill-row {
 .split-bill-field {
   grid-column: 1 / -1;
   display: grid;
-  gap: 10px;
   padding: 12px;
   background: #fff8e8;
   border: 1px solid rgba(183, 132, 42, 0.26);
@@ -1586,13 +1585,8 @@ tbody tr.split-bill-row {
   accent-color: #9b2c3a;
 }
 
-.split-bill-toggle span,
-.split-bill-toggle strong,
-.split-bill-toggle em {
-  display: block;
-}
-
 .split-bill-toggle strong {
+  display: block;
   color: #5b2f12;
   font-size: 0.92rem;
   font-weight: 950;
@@ -1600,18 +1594,6 @@ tbody tr.split-bill-row {
 
 .split-bill-field.active .split-bill-toggle strong {
   color: #842432;
-}
-
-.split-bill-toggle em {
-  margin-top: 2px;
-  color: #746c61;
-  font-size: 0.76rem;
-  font-style: normal;
-  font-weight: 850;
-}
-
-.split-bill-field input:not([type="checkbox"]) {
-  min-height: 38px;
 }
 
 .form-grid textarea {
@@ -1732,31 +1714,6 @@ tbody tr.split-bill-row {
   background: #fffdf8;
   border: 1px solid rgba(33, 29, 23, 0.09);
   border-radius: 8px;
-}
-
-.summary-split-bill {
-  display: grid;
-  gap: 3px;
-  padding: 10px;
-  color: #842432;
-  background: #fff0f1;
-  border: 1px solid rgba(155, 44, 58, 0.2);
-  border-radius: 8px;
-}
-
-.summary-split-bill strong,
-.summary-split-bill span {
-  display: block;
-}
-
-.summary-split-bill strong {
-  font-size: 0.78rem;
-  text-transform: uppercase;
-}
-
-.summary-split-bill span {
-  font-size: 0.76rem;
-  font-weight: 850;
 }
 
 .auto-summary .summary-hero {
