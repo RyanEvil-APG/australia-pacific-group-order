@@ -420,6 +420,11 @@ function readJsonLdPrice(html) {
 
 function readEmbeddedPrice(html) {
   const normalized = html.replace(/\\u002F/g, "/").replace(/\\\//g, "/").replace(/&quot;/g, "\"");
+  const chemistAlgoliaPrice = normalized.match(/"key"\s*:\s*"cwr-algolia-price"[\s\S]{0,120}?"value"\s*:\s*"?(\d+(?:\.\d+)?)"?/i)?.[1];
+  if (chemistAlgoliaPrice) {
+    const cents = Number(chemistAlgoliaPrice);
+    if (Number.isFinite(cents) && cents > 0) return cents >= 100 ? cents / 100 : cents;
+  }
   const structuredPatterns = [
     /"prices"\s*:\s*\[\s*\{[\s\S]{0,2500}?"amount"\s*:\s*([0-9]+(?:\.[0-9]+)?)/i,
     /"price"\s*:\s*\{\s*"value"\s*:\s*\{\s*"amount"\s*:\s*([0-9]+(?:\.[0-9]+)?)/i,
@@ -600,7 +605,7 @@ async function fetchProductPreview(rawUrl) {
   const target = normalizePreviewUrl(rawUrl);
   const chemistFallback = chemistPreviewFromUrl(target);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 9000);
+  const timeout = setTimeout(() => controller.abort(), 16000);
   try {
     const shopifyPreview = await fetchShopifyPreview(target, controller.signal);
     const response = await fetch(target, {

@@ -3388,11 +3388,12 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
       if (!response.ok) {
         throw new Error(data.error || "Không lấy được ảnh từ link này.");
       }
+      const previousPreviewUrl = lastPreviewUrlRef.current;
       lastPreviewUrlRef.current = url;
       setDraft((current) => {
         if (String(current.productUrl || "").trim() !== url) return current;
         const nextAud = money(data.priceAud);
-        const shouldApplyPrice = nextAud > 0 && (force || money(current.aud) <= 0);
+        const shouldApplyPrice = nextAud > 0 && (force || previousPreviewUrl !== url || money(current.aud) <= 0);
         return {
           ...current,
           product: current.product || data.title || current.product,
