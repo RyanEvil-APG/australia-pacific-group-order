@@ -625,7 +625,7 @@ function stripDemo(items, demoIds, idKey = "id") {
 }
 
 function getOrderId(order) {
-  return order.id || makeId("AU");
+  return order.id || makeId("APG");
 }
 
 function compactDate(value) {
@@ -636,29 +636,72 @@ function compactDateYmd(value) {
   return String(value || "").replaceAll("-", "");
 }
 
-function orderCodeSegment(batch) {
-  const raw = String(batch?.code || batch?.id || "NOFLIGHT").toUpperCase();
-  return raw.replace(/[^A-Z0-9]/g, "").slice(0, 10) || "NOFLIGHT";
+function batchYear(batch) {
+  return String(batchCodeDate(batch) || today()).slice(0, 4);
+}
+
+function batchMonthDay(batch) {
+  const value = batchCodeDate(batch);
+  if (!value) return "0000";
+  const [, month = "00", day = "00"] = String(value).split("-");
+  return `${month}${day}`;
+}
+
+function batchCodeDate(batch) {
+  return batch?.arrival || batch?.departure || "";
+}
+
+function flightSequenceMap(batches) {
+  const yearCounts = new Map();
+  const sequenceById = new Map();
+  normalizeBatchesForSequence(batches).forEach((batch) => {
+    const year = batchYear(batch);
+    const nextSequence = (yearCounts.get(year) || 0) + 1;
+    yearCounts.set(year, nextSequence);
+    sequenceById.set(String(batch.id || batch.code || `${year}-${nextSequence}`), nextSequence);
+  });
+  return sequenceById;
+}
+
+function normalizeBatchesForSequence(batches) {
+  return (Array.isArray(batches) ? batches : [])
+    .filter((batch) => batch?.departure)
+    .slice()
+    .sort((a, b) => {
+      const dateDiff = String(batchCodeDate(a)).localeCompare(String(batchCodeDate(b)));
+      if (dateDiff !== 0) return dateDiff;
+      return String(a.id || a.code || "").localeCompare(String(b.id || b.code || ""));
+    });
+}
+
+function generatedBatchCodeFromSequence(batch, sequence) {
+  const year = batchYear(batch);
+  const monthDay = batchMonthDay(batch);
+  if (!year || !monthDay || monthDay === "0000") return "";
+  return `${year}-VN${String(sequence || 1).padStart(2, "0")}-${monthDay} Flight`;
+}
+
+function orderCodeSegment(batch, order) {
+  if (batch?.code) {
+    const raw = String(batch.code).replace(/\s*Flight.*$/i, "");
+    return raw.replace(/[^A-Z0-9-]/gi, "").toUpperCase() || "NOFLIGHT";
+  }
+  return `NOFLIGHT-${compactDate(order?.orderDate || today())}`;
 }
 
 function generateOrderCode(order, batch, orders) {
-  const codeDate = compactDate(batch?.arrival || batch?.departure || order?.orderDate || today());
-  const segment = orderCodeSegment(batch);
-  const prefix = `APG-${codeDate}-${segment}`;
+  const segment = orderCodeSegment(batch, order);
+  const prefix = `APG-${segment}`;
   const currentId = order?.id;
   const nextNumber =
     orders
-      .filter((item) => item.id !== currentId && String(item.id || "").startsWith(prefix))
+      .filter((item) => item.id !== currentId && String(item.id || "").startsWith(`${prefix}-`))
       .reduce((max, item) => {
         const match = String(item.id || "").match(/-(\d+)$/);
         return Math.max(max, match ? Number(match[1]) : 0);
       }, 0) + 1;
 
   return `${prefix}-${String(nextNumber).padStart(3, "0")}`;
-}
-
-function batchCodeDate(batch) {
-  return batch?.departure || "";
 }
 
 function dateFromValue(value) {
@@ -710,12 +753,17 @@ function suggestNextBatchDraft(batches) {
 }
 
 function generateBatchCode(batch, batches) {
-  const datePart = compactDateYmd(batchCodeDate(batch));
-  if (!datePart) return "";
-  const base = `${datePart} Flight`;
-  const currentId = batch?.id;
+  if (!batchCodeDate(batch)) return "";
+  const currentId = String(batch?.id || "__draft__");
+  const batchForSequence = { ...batch, id: currentId };
+  const sequencePool = Array.isArray(batches) && batches.some((item) => String(item.id || "") === currentId)
+    ? batches.map((item) => (String(item.id || "") === currentId ? batchForSequence : item))
+    : [...(Array.isArray(batches) ? batches : []), batchForSequence];
+  const sequence = flightSequenceMap(sequencePool).get(currentId) || 1;
+  const base = generatedBatchCodeFromSequence(batchForSequence, sequence);
+  if (!base) return "";
   const usedNumbers = batches
-    .filter((item) => item.id !== currentId)
+    .filter((item) => String(item.id || "") !== currentId)
     .map((item) => String(item.code || ""))
     .map((code) => {
       const escapedBase = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -731,16 +779,52 @@ function generateBatchCode(batch, batches) {
 
 function normalizeBatchCodes(batches) {
   if (!Array.isArray(batches)) return [];
-  const dateCounts = new Map();
+  const sequenceById = flightSequenceMap(batches);
+  const usedCodes = new Map();
   return batches.map((batch) => {
     if (!batch?.departure) return batch;
-    const datePart = compactDateYmd(batchCodeDate(batch));
-    if (!datePart) return batch;
-    const count = (dateCounts.get(datePart) || 0) + 1;
-    dateCounts.set(datePart, count);
-    const nextCode = `${datePart} Flight${count > 1 ? ` ${String(count).padStart(2, "0")}` : ""}`;
+    const sequence = sequenceById.get(String(batch.id || batch.code || "")) || 1;
+    const baseCode = generatedBatchCodeFromSequence(batch, sequence);
+    const duplicateCount = (usedCodes.get(baseCode) || 0) + 1;
+    usedCodes.set(baseCode, duplicateCount);
+    const nextCode = `${baseCode}${duplicateCount > 1 ? ` ${String(duplicateCount).padStart(2, "0")}` : ""}`;
     return nextCode && batch.code !== nextCode ? { ...batch, code: nextCode } : batch;
   });
+}
+
+function orderCodeSort(a, b) {
+  const batchDiff = String(a.batchId || "").localeCompare(String(b.batchId || ""));
+  if (batchDiff !== 0) return batchDiff;
+  const dateDiff = String(a.orderDate || "").localeCompare(String(b.orderDate || ""));
+  if (dateDiff !== 0) return dateDiff;
+  const oldIdDiff = String(a.id || "").localeCompare(String(b.id || ""));
+  if (oldIdDiff !== 0) return oldIdDiff;
+  return String(a.product || "").localeCompare(String(b.product || ""));
+}
+
+function normalizeOrderCodes(orders, batches) {
+  const normalizedOrders = normalizeOrders(orders);
+  if (!normalizedOrders.length) return { orders: [], idMap: new Map(), changed: false };
+  const counters = new Map();
+  const idMap = new Map();
+  const nextOrders = normalizedOrders
+    .slice()
+    .sort(orderCodeSort)
+    .map((order) => {
+      const batch = findOrderBatch(batches, order);
+      const prefix = `APG-${orderCodeSegment(batch, order)}`;
+      const nextNumber = (counters.get(prefix) || 0) + 1;
+      counters.set(prefix, nextNumber);
+      const nextId = `${prefix}-${String(nextNumber).padStart(3, "0")}`;
+      if (String(order.id || "") !== nextId) idMap.set(order.id, nextId);
+      return String(order.id || "") === nextId ? order : { ...order, id: nextId };
+    });
+  return { orders: nextOrders, idMap, changed: idMap.size > 0 };
+}
+
+function remapOrderReferences(items, idMap, key) {
+  if (!Array.isArray(items) || !idMap?.size) return Array.isArray(items) ? items : [];
+  return items.map((item) => (idMap.has(item?.[key]) ? { ...item, [key]: idMap.get(item[key]) } : item));
 }
 
 function App() {
@@ -801,13 +885,16 @@ function App() {
   const knownDemoTaskIds = React.useMemo(() => new Set(["task-dyson-quote", "task-melbourne-cash", "task-vip-bag-color"]), []);
 
   function cleanServerState(state) {
+    const cleanBatches = normalizeBatchCodes(stripDemo(state.batches, knownDemoBatchIds));
+    const orderMigration = normalizeOrderCodes(stripDemo(state.orders, knownDemoOrderIds), cleanBatches);
     return {
       ...state,
-      orders: normalizeOrders(stripDemo(state.orders, knownDemoOrderIds)),
+      orders: orderMigration.orders,
       customers: normalizeCustomers(state.customers),
-      batches: normalizeBatchCodes(stripDemo(state.batches, knownDemoBatchIds)),
+      batches: cleanBatches,
       inventory: stripDemo(state.inventory, knownDemoStockIds, "sku"),
-      tasks: stripDemo(state.tasks, knownDemoTaskIds)
+      transactions: remapOrderReferences(state.transactions, orderMigration.idMap, "orderId"),
+      tasks: remapOrderReferences(stripDemo(state.tasks, knownDemoTaskIds), orderMigration.idMap, "linkedOrderId")
     };
   }
 
@@ -849,6 +936,15 @@ function App() {
       return changed ? nextOrders : current;
     });
   }, [batches]);
+
+  React.useEffect(() => {
+    if (!orders.length) return;
+    const migration = normalizeOrderCodes(orders, batches);
+    if (!migration.changed) return;
+    setOrders(migration.orders);
+    setTransactions((current) => remapOrderReferences(current, migration.idMap, "orderId"));
+    setTasks((current) => remapOrderReferences(current, migration.idMap, "linkedOrderId"));
+  }, [orders, batches]);
 
   React.useEffect(() => {
     if (!sessionToken || !currentAccountId) return;
@@ -1665,8 +1761,11 @@ function FilterBar({ query, setQuery, statusFilter, setStatusFilter, batchFilter
 
 function OverviewView(props) {
   const { totals, orders, filteredOrders, batches, accounts, openOrder, openBatch, openBuyingChecklist, openAfterArrival, updateOrderStatus, canEditOrder, canSeeProfit } = props;
-  const reminders = afterArrivalReminders(orders, batches);
-  const flightTimeline = batches
+  const nearestOverviewBatch = autoBatchForOrder(batches, today()) ?? sortedFlightBatches(batches).find((batch) => !batchHasArrived(batch)) ?? null;
+  const overviewBatches = nearestOverviewBatch ? [nearestOverviewBatch] : [];
+  const overviewFilteredOrders = nearestOverviewBatch ? filteredOrders.filter((order) => order.batchId === nearestOverviewBatch.id) : [];
+  const reminders = nearestOverviewBatch ? afterArrivalReminders(orders, batches).filter((reminder) => reminder.batch?.id === nearestOverviewBatch.id) : [];
+  const flightTimeline = overviewBatches
     .map((batch) => {
       const batchOrders = orders.filter((order) => order.batchId === batch.id);
       const remaining = batchOrders.reduce((sum, order) => sum + orderFinance(order).remainingVnd, 0);
@@ -1744,7 +1843,7 @@ function OverviewView(props) {
           <PackingListSummary
             title="Packing list chuyến bay"
             eyebrow="Flight packing"
-            batches={batches}
+            batches={overviewBatches}
             orders={orders}
             openBuyingChecklist={openBuyingChecklist}
           />
@@ -1764,7 +1863,15 @@ function OverviewView(props) {
             Thêm đơn
           </button>
         </div>
-        <OrdersTable orders={filteredOrders.slice(0, 10)} batches={batches} openOrder={openOrder} compact canSeeProfit={canSeeProfit} />
+        <OrdersTable
+          orders={overviewFilteredOrders.slice(0, 10)}
+          batches={batches}
+          openOrder={openOrder}
+          compact
+          canSeeProfit={canSeeProfit}
+          emptyTitle="Chưa có đơn trong chuyến gần nhất"
+          emptyBody="Tạo đơn mới hoặc chọn lại chuyến bay trong đơn để Tổng quan gom đúng chuyến."
+        />
       </section>
 
     </div>
@@ -3546,7 +3653,7 @@ function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderSt
               <input value={draft.code} onChange={(event) => setDraft({ ...draft, code: event.target.value, autoCode: false })} />
               <button type="button" onClick={() => setDraft({ ...draft, code: generateBatchCode(draft, batches), autoCode: true })}>Auto</button>
             </div>
-            <span className="field-hint">Chọn Ngày bay để app tự tạo dạng yyyymmdd Flight, ví dụ 20260524 Flight. Thêm chuyến mới sẽ gợi ý lịch +14 ngày từ chuyến gần nhất.</span>
+            <span className="field-hint">Chọn Ngày hàng về VN để app tự tạo dạng 2026-VN01-0528 Flight: VN01 là chuyến về VN thứ 1 trong năm, 0528 là ngày về. Nếu chưa nhập ngày về, app tạm dùng Ngày bay.</span>
           </Field>
           <Field label="Tuyến"><input value={draft.route} onChange={(event) => setDraft({ ...draft, route: event.target.value })} /></Field>
           <Field label="Cutoff"><input type="date" value={draft.cutoff} onChange={(event) => updateFlightDate("cutoff", event.target.value)} /></Field>

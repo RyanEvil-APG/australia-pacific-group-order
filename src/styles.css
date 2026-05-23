@@ -437,7 +437,7 @@ th span {
 
 .overview-top-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.3fr);
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.34fr);
   grid-template-areas:
     "metrics buying"
     "timeline buying"
@@ -565,8 +565,8 @@ th span {
   display: grid;
   gap: 10px;
   min-width: 0;
-  max-height: 620px;
-  overflow: hidden;
+  max-height: none;
+  overflow: visible;
   padding: 10px;
   background: #fff;
   border: 1px solid rgba(33, 29, 23, 0.09);
@@ -639,15 +639,14 @@ th span {
 .overview-buying-list {
   display: grid;
   gap: 7px;
-  max-height: 420px;
-  overflow-y: auto;
+  max-height: none;
+  overflow: visible;
   padding-right: 2px;
-  scrollbar-width: thin;
 }
 
 .overview-buying-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   padding: 8px;
@@ -660,6 +659,10 @@ th span {
 .overview-buying-item .order-product-thumb {
   width: 38px;
   height: 38px;
+}
+
+.overview-buying-item button {
+  justify-self: stretch;
 }
 
 .overview-buying-empty {
