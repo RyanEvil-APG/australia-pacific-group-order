@@ -185,12 +185,9 @@ const orderStatuses = [
 ];
 
 const batchStatuses = [
-  { id: "open", label: "Đang gom" },
-  { id: "closed", label: "Đã chốt" },
-  { id: "not_sent", label: "Chưa gửi" },
-  { id: "sent", label: "Đã gửi" },
-  { id: "shipping", label: "Đang gửi" },
-  { id: "arrived", label: "Đã về VN" }
+  { id: "open", label: "Đang gom / chưa gửi" },
+  { id: "shipping", label: "Đã gửi về VN" },
+  { id: "arrived", label: "Đầu VN đã nhận hàng" }
 ];
 
 const customerTiers = ["Customer", "Vip", "Vip1", "Vip2", "Vip3"];
@@ -309,8 +306,19 @@ function statusLabel(status) {
   return orderStatuses.find((item) => item.id === normalizedStatus)?.label ?? normalizedStatus;
 }
 
+function normalizeBatchStatus(status) {
+  const legacyMap = {
+    closed: "open",
+    not_sent: "open",
+    sent: "shipping"
+  };
+  const nextStatus = legacyMap[status] ?? status;
+  return batchStatuses.some((item) => item.id === nextStatus) ? nextStatus : "open";
+}
+
 function batchStatusLabel(status) {
-  return batchStatuses.find((item) => item.id === status)?.label ?? status;
+  const normalizedStatus = normalizeBatchStatus(status);
+  return batchStatuses.find((item) => item.id === normalizedStatus)?.label ?? normalizedStatus;
 }
 
 function dateDiffFromToday(value) {
@@ -337,6 +345,20 @@ function dateTime(value) {
   if (!value) return null;
   const time = new Date(`${value}T00:00:00`).getTime();
   return Number.isNaN(time) ? null : time;
+}
+
+function batchHasArrived(batch) {
+  const arrival = dateTime(batch?.arrival);
+  const todayTime = dateTime(today());
+  return normalizeBatchStatus(batch?.status) === "arrived" || (arrival !== null && todayTime !== null && arrival < todayTime);
+}
+
+function batchIsInTransit(batch) {
+  return !batchHasArrived(batch) && normalizeBatchStatus(batch?.status) === "shipping";
+}
+
+function batchIsCollecting(batch) {
+  return !batchHasArrived(batch) && normalizeBatchStatus(batch?.status) === "open";
 }
 
 function autoBatchForOrder(batches, orderDate = today()) {
@@ -391,7 +413,7 @@ function flightTimelineStage(batch) {
   const departureDiff = dateDiffFromToday(batch.departure);
   const arrivalDiff = dateDiffFromToday(batch.arrival);
   const isInFlight =
-    batch.status === "shipping" ||
+    normalizeBatchStatus(batch.status) === "shipping" ||
     ((departureDiff === null || departureDiff <= 0) && arrivalDiff !== null && arrivalDiff >= 0 && batch.status !== "arrived");
 
   if (isInFlight) {
@@ -410,7 +432,7 @@ function flightTimelineStage(batch) {
     return { label: "Cần chốt mua", tone: "closing", focusDate: batch.cutoff, sortDate: batch.cutoff };
   }
 
-  if (batch.status === "arrived" || (arrivalDiff !== null && arrivalDiff < 0)) {
+  if (batchHasArrived(batch) || (arrivalDiff !== null && arrivalDiff < 0)) {
     return { label: "Đã về VN", tone: "done", focusDate: batch.arrival, sortDate: batch.arrival || batch.departure || batch.cutoff || "" };
   }
 
@@ -1034,6 +1056,7 @@ function App() {
     setDraft({
       ...nextDraft,
       code: batch?.code ?? (nextDraft.departure ? generateBatchCode(nextDraft, batches) : ""),
+      status: normalizeBatchStatus(nextDraft.status),
       autoCode: !batch?.code
     });
     setModal("batch");
@@ -1043,7 +1066,7 @@ function App() {
     event.preventDefault();
     const code = draft.code || generateBatchCode(draft, batches) || draft.id;
     const { autoCode: _autoCode, ...batchDraft } = draft;
-    const nextBatch = { ...batchDraft, id: draft.id || makeId("DOT"), code, freightAud: Math.max(0, Number(draft.freightAud || 0)) };
+    const nextBatch = { ...batchDraft, id: draft.id || makeId("DOT"), code, status: normalizeBatchStatus(draft.status), freightAud: Math.max(0, Number(draft.freightAud || 0)) };
     setBatches((current) => {
       const exists = current.some((batch) => batch.id === nextBatch.id);
       return exists ? current.map((batch) => (batch.id === nextBatch.id ? nextBatch : batch)) : [nextBatch, ...current];
@@ -1474,14 +1497,8 @@ function afterArrivalReminders(orders, batches) {
 function TeamPresencePanel({ accounts }) {
   const activeAccounts = accounts.filter((account) => account.active);
   return (
-    <section className="panel team-panel">
-      <div className="panel-title">
-        <div>
-          <span className="eyebrow">Team live</span>
-          <h2>Nhân sự đang dùng app</h2>
-        </div>
-        <UserRound size={18} />
-      </div>
+    <section className="team-strip-panel">
+      <span className="eyebrow">Team</span>
       <div className="team-avatar-grid">
         {activeAccounts.map((account) => (
           <div className="team-avatar-card" key={account.id}>
@@ -1568,6 +1585,7 @@ function OverviewView(props) {
 
   return (
     <div className="screen-stack">
+      <TeamPresencePanel accounts={accounts} />
       <FilterBar {...props} />
       <div className="overview-top-grid">
         <section className="metric-grid lean">
@@ -1637,10 +1655,7 @@ function OverviewView(props) {
         </div>
       </div>
 
-      <div className="overview-ops-row">
-        <TeamPresencePanel accounts={accounts} />
-        <OpsReminderPanel reminders={reminders} openOrder={openOrder} openAfterArrival={openAfterArrival} />
-      </div>
+      <OpsReminderPanel reminders={reminders} openOrder={openOrder} openAfterArrival={openAfterArrival} />
 
       <section className="panel">
         <div className="panel-title">
@@ -1997,13 +2012,14 @@ const packingWorkflowStatuses = [
 ];
 
 function PackingListSummary({ title, eyebrow, batches, orders, openBuyingChecklist }) {
-  const summaryBatches = sortedFlightBatches(batches)
+  const activeBatches = sortedFlightBatches(batches).filter((batch) => !batchHasArrived(batch));
+  const summaryBatches = activeBatches
     .map((batch) => {
       const batchOrders = orders.filter((order) => order.batchId === batch.id);
       const progress = flightOrderProgress(batchOrders);
       return { batch, progress };
     })
-    .filter(({ progress }) => progress.total > 0 || batches.length <= 6)
+    .filter(({ progress }) => progress.total > 0 || activeBatches.length <= 6)
     .slice(0, 6);
   const unassignedOrders = orders.filter((order) => !order.batchId && normalizeOrderStatus(order.status) !== "cancelled");
 
@@ -2188,7 +2204,7 @@ function PackingWorkflowBoard({ orders, batches, openOrder, updateOrderStatus })
   );
 }
 
-function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklist, updateOrderStatus, canSeeProfit }) {
+function FlightsViewLegacy({ batches, orders, openBatch, openOrder, openBuyingChecklist, updateOrderStatus, canSeeProfit }) {
   const upcomingBatches = sortedFlightBatches(batches);
   const unassignedOrders = orders.filter((order) => !order.batchId && normalizeOrderStatus(order.status) !== "cancelled");
   const totals = batches.reduce(
@@ -2340,6 +2356,206 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
         })}
       </div>
       {!batches.length && <EmptyState title="Chưa có chuyến bay" body="Tạo chuyến trước, sau đó xếp đơn vào chuyến trong màn sửa đơn." />}
+    </div>
+  );
+}
+
+function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklist, updateOrderStatus, canSeeProfit }) {
+  const [flightFilter, setFlightFilter] = React.useState("nearest");
+  const sortedBatches = sortedFlightBatches(batches);
+  const activeBatches = sortedBatches.filter((batch) => !batchHasArrived(batch));
+  const arrivedBatches = sortedBatches
+    .filter((batch) => batchHasArrived(batch))
+    .sort((a, b) => String(b.arrival || b.departure || "").localeCompare(String(a.arrival || a.departure || "")));
+  const nearestBatch = activeBatches[0] || null;
+  const visibleBatches =
+    flightFilter === "nearest"
+      ? nearestBatch
+        ? [nearestBatch]
+        : []
+      : flightFilter === "collecting"
+        ? activeBatches.filter(batchIsCollecting)
+        : flightFilter === "shipping"
+          ? activeBatches.filter(batchIsInTransit)
+          : activeBatches;
+  const unassignedOrders = orders.filter((order) => !order.batchId && normalizeOrderStatus(order.status) !== "cancelled");
+  const totals = activeBatches.reduce(
+    (sum, batch) => {
+      const batchOrders = orders.filter((order) => order.batchId === batch.id);
+      const progress = flightOrderProgress(batchOrders);
+      sum.orders += batchOrders.length;
+      sum.waitingBuy += progress.waitingBuy;
+      sum.purchased += progress.purchased;
+      sum.sentVn += progress.sentVn;
+      sum.freightAud += money(batch.freightAud);
+      sum.remaining += batchOrders.reduce((orderSum, order) => orderSum + orderFinance(order).remainingVnd, 0);
+      sum.revenue += batchOrders.reduce((orderSum, order) => orderSum + orderFinance(order).totalThuVnd, 0);
+      sum.cost += batchOrders.reduce((orderSum, order) => orderSum + orderFinance(order).totalCostVnd, 0);
+      return sum;
+    },
+    { orders: 0, waitingBuy: 0, purchased: 0, sentVn: 0, freightAud: 0, remaining: 0, revenue: 0, cost: 0 }
+  );
+
+  const renderFlightRows = (rows, emptyTitle, emptyBody) => (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Chuyến</th>
+            <th>Trạng thái</th>
+            <th>Lịch xử lý</th>
+            <th>Order</th>
+            <th>Tiến độ</th>
+            <th>Tài chính</th>
+            <th>Ghi chú</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((batch) => {
+            const status = normalizeBatchStatus(batch.status);
+            const batchOrders = orders.filter((order) => order.batchId === batch.id);
+            const progress = flightOrderProgress(batchOrders);
+            const revenue = batchOrders.reduce((sum, order) => sum + orderFinance(order).totalThuVnd, 0);
+            const remaining = batchOrders.reduce((sum, order) => sum + orderFinance(order).remainingVnd, 0);
+            return (
+              <tr key={batch.id} onClick={() => openBatch(batch)}>
+                <td data-label="Chuyến">
+                  <strong>{batch.code || batch.id}</strong>
+                  <span>{batch.route}</span>
+                </td>
+                <td data-label="Trạng thái">
+                  <span className={`batch-chip ${status}`}>{batchStatusLabel(status)}</span>
+                </td>
+                <td data-label="Lịch xử lý">
+                  <strong>Về VN {batch.arrival || "-"}</strong>
+                  <span>Bay {batch.departure || "-"}</span>
+                  <span>Cutoff {batch.cutoff || "-"}</span>
+                </td>
+                <td data-label="Order">{batchOrders.length}</td>
+                <td data-label="Tiến độ">
+                  <div className="flight-progress-mini">
+                    <span className={progress.waitingBuy ? "warn" : ""}>Chờ mua {progress.waitingBuy}</span>
+                    <span>Đã mua {progress.purchased}</span>
+                    <span>Đã gửi {progress.sentVn}</span>
+                    <span>Đã nhận {progress.receivedVn}</span>
+                  </div>
+                </td>
+                <td data-label="Tài chính" className="finance-cell">
+                  <strong>{vnd(revenue)}</strong>
+                  <span>Cước bay {aud(batch.freightAud)}</span>
+                  <span className="money-due">Còn thu {vnd(remaining)}</span>
+                </td>
+                <td data-label="Ghi chú">{batch.note}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {!rows.length && <EmptyState title={emptyTitle} body={emptyBody} />}
+    </div>
+  );
+
+  return (
+    <div className="screen-stack flights-screen">
+      <div className="panel-title standalone compact-page-title">
+        <div>
+          <span className="eyebrow">Flight control</span>
+          <h2>Quản lý chuyến bay</h2>
+        </div>
+        <button className="primary-button" onClick={() => openBatch()}>
+          <Plus size={17} />
+          Thêm chuyến
+        </button>
+      </div>
+
+      <section className="flight-filter-panel">
+        <div className="flight-filter-summary">
+          <span className="eyebrow">Filter</span>
+          <strong>{nearestBatch ? `Chuyến gần nhất: ${nearestBatch.code || nearestBatch.id}` : "Chưa có chuyến đang mở"}</strong>
+          <span>
+            Đang mở {activeBatches.length} chuyến · Đã về VN {arrivedBatches.length} chuyến
+          </span>
+        </div>
+        <div className="flight-filter-actions">
+          <button className={flightFilter === "nearest" ? "active" : ""} onClick={() => setFlightFilter("nearest")}>Gần nhất</button>
+          <button className={flightFilter === "collecting" ? "active" : ""} onClick={() => setFlightFilter("collecting")}>Đang gom</button>
+          <button className={flightFilter === "shipping" ? "active" : ""} onClick={() => setFlightFilter("shipping")}>Đã gửi về VN</button>
+          <button className={flightFilter === "all" ? "active" : ""} onClick={() => setFlightFilter("all")}>Tất cả đang mở</button>
+        </div>
+      </section>
+
+      <section className="metric-grid lean flights-kpi-grid">
+        <Kpi label="Chuyến đang mở" value={String(activeBatches.length)} icon={Plane} />
+        <Kpi label="Order đã link" value={String(totals.orders)} icon={ClipboardList} />
+        <Kpi label="Chờ mua" value={String(totals.waitingBuy)} icon={PackageCheck} tone={totals.waitingBuy ? "warning" : "success"} />
+        <Kpi label="Đã mua chờ gửi" value={String(totals.purchased)} icon={CheckCircle2} />
+        <Kpi label="Chưa xếp chuyến" value={String(unassignedOrders.length)} icon={Filter} tone={unassignedOrders.length ? "warning" : ""} />
+        <Kpi label="Lịch sử đã về" value={String(arrivedBatches.length)} icon={Boxes} />
+        <Kpi label="Còn phải thu" value={vnd(totals.remaining)} icon={WalletCards} tone="warning" />
+        {canSeeProfit && <Kpi label="Lãi chuyến đang mở" value={vnd(totals.revenue - totals.cost)} icon={Gem} tone="success" />}
+      </section>
+
+      <div className="panel">
+        <div className="panel-title">
+          <div>
+            <span className="eyebrow">Active flights</span>
+            <h2>Bảng quản lý chuyến đang mở</h2>
+          </div>
+          <Plane size={18} />
+        </div>
+        {renderFlightRows(visibleBatches, "Không có chuyến phù hợp filter", "Đổi filter hoặc bấm Thêm chuyến để tạo lịch bay mới.")}
+      </div>
+
+      <PackingListSummary
+        title="Packing list chuyến đang xử lý"
+        eyebrow="Flight packing"
+        batches={batches}
+        orders={orders}
+        openBuyingChecklist={openBuyingChecklist}
+      />
+
+      <div className="panel">
+        <div className="panel-title">
+          <div>
+            <span className="eyebrow">Arrived archive</span>
+            <h2>Chuyến đã về VN</h2>
+          </div>
+          <Boxes size={18} />
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Chuyến</th>
+                <th>Ngày về VN</th>
+                <th>Order</th>
+                <th>Đã ship</th>
+                <th>Thu đủ</th>
+                <th>Còn phải thu</th>
+              </tr>
+            </thead>
+            <tbody>
+              {arrivedBatches.map((batch) => {
+                const batchOrders = orders.filter((order) => order.batchId === batch.id);
+                const shipped = batchOrders.filter((order) => order.customerShipped || normalizeOrderStatus(order.status) === "delivered").length;
+                const paid = batchOrders.filter((order) => order.paidInFull || orderFinance(order).remainingVnd <= 0).length;
+                const remaining = batchOrders.reduce((sum, order) => sum + orderFinance(order).remainingVnd, 0);
+                return (
+                  <tr key={batch.id} onClick={() => openBatch(batch)}>
+                    <td data-label="Chuyến"><strong>{batch.code || batch.id}</strong><span>{batch.route}</span></td>
+                    <td data-label="Ngày về VN"><strong>{batch.arrival || "-"}</strong><span>Bay {batch.departure || "-"}</span></td>
+                    <td data-label="Order">{batchOrders.length}</td>
+                    <td data-label="Đã ship">{shipped}/{batchOrders.length}</td>
+                    <td data-label="Thu đủ">{paid}/{batchOrders.length}</td>
+                    <td data-label="Còn phải thu" className="finance-cell"><strong>{vnd(remaining)}</strong></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {!arrivedBatches.length && <EmptyState title="Chưa có chuyến đã về VN" body="Khi chuyến được đánh dấu đầu VN đã nhận hàng hoặc đã qua ngày về, app sẽ chuyển xuống bảng này." />}
+        </div>
+      </div>
     </div>
   );
 }
