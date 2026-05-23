@@ -3406,9 +3406,11 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
       const hasPrice = money(data.priceAud) > 0;
       setPreviewStatus(data.imageUrl || hasPrice ? "done" : "error");
       setPreviewError(
-        data.imageUrl || hasPrice
-          ? (hasPrice ? `Đã lấy giá ${audPrice(data.rawPriceAud || data.priceAud)}${data.rawPriceAud && data.priceAud !== data.rawPriceAud ? `, làm tròn thành ${audPrice(data.priceAud)}` : ""}.` : "")
-          : "Đã nhận shop/link nhưng site này không trả ảnh hoặc giá rõ ràng. Upload ảnh tay và nhập giá tay để chắc nhất."
+        hasPrice
+          ? `Đã tự lấy giá ${audPrice(data.rawPriceAud || data.priceAud)}${data.rawPriceAud && data.priceAud !== data.rawPriceAud ? `, làm tròn thành ${audPrice(data.priceAud)}` : ""}.`
+          : data.imageUrl
+            ? "Đã lấy ảnh, nhưng site chưa trả giá rõ ràng. Có thể nhập giá tay hoặc bấm Lấy lại."
+            : "Đã nhận shop/link nhưng site này không trả ảnh hoặc giá rõ ràng. Upload ảnh tay và nhập giá tay để chắc nhất."
       );
     } catch (error) {
       const chemistFallback = chemistPreviewFromUrl(url);
@@ -3444,10 +3446,9 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
   React.useEffect(() => {
     const url = String(draft.productUrl || "").trim();
     if (!url || !looksLikeProductUrl(url)) return undefined;
-    if (lastPreviewUrlRef.current === url && draft.productImageUrl && money(draft.aud) > 0) return undefined;
-    const timeout = window.setTimeout(() => fetchProductPreview(url, false), 800);
+    const timeout = window.setTimeout(() => fetchProductPreview(url, false), 450);
     return () => window.clearTimeout(timeout);
-  }, [draft.productUrl, draft.productImageUrl, draft.aud, sessionToken]);
+  }, [draft.productUrl, sessionToken]);
 
   return (
     <ModalShell title="Sửa / thêm đơn hàng" eyebrow="Order management" close={close}>
@@ -3516,6 +3517,12 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
                     const nextUrl = event.target.value;
                     const chemistFallback = chemistPreviewFromUrl(nextUrl);
                     const isManualImage = draft.productImageSource === "manual";
+                    if (looksLikeProductUrl(nextUrl)) {
+                      setPreviewStatus("loading");
+                      setPreviewError("");
+                    } else {
+                      setPreviewStatus("idle");
+                    }
                     setDraft({
                       ...draft,
                       productUrl: nextUrl,
@@ -3527,7 +3534,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
                   }}
                 />
                 <button type="button" disabled={!looksLikeProductUrl(draft.productUrl) || previewStatus === "loading"} onClick={() => fetchProductPreview(draft.productUrl, true)}>
-                  <RefreshCw size={15} /> Đọc link
+                  <RefreshCw size={15} /> Lấy lại
                 </button>
               </div>
             </Field>
@@ -3538,7 +3545,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
                 </div>
                 <div className="product-media-controls">
                   <strong>{draft.productImageUrl ? (draft.productImageSource === "manual" ? "Ảnh upload tay" : "Ảnh lấy từ link") : "Chưa có ảnh sản phẩm"}</strong>
-                  <span>{previewStatus === "loading" ? "Đang đọc link và tìm ảnh đại diện..." : previewError || "Ảnh giúp nhân viên mua hàng kiểm tra đúng mẫu nhanh hơn."}</span>
+                  <span>{previewStatus === "loading" ? "Đang tự đọc link, ảnh và giá sản phẩm..." : previewError || "Dán link là app tự đọc ảnh và giá; nút Lấy lại chỉ dùng khi muốn refresh."}</span>
                   <label className="source-mini-field">
                     Shop / nền tảng
                     <input value={draft.source ?? ""} placeholder="Tự nhận từ link hoặc nhập tên shop" onChange={(event) => setDraft({ ...draft, source: event.target.value })} />
@@ -3623,7 +3630,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
             </Field>
             <Field label="Tiền hàng AUD / sản phẩm">
               <input type="number" min="0" step="0.01" value={draft.aud} onChange={(event) => setDraft({ ...draft, aud: event.target.value })} />
-              <span className="field-hint">Dán link rồi bấm Đọc link để tự lấy giá. Nếu giá .90 trở lên, app tự làm tròn lên số nguyên kế tiếp; vẫn sửa tay được.</span>
+              <span className="field-hint">Dán link là app tự lấy giá. Nếu giá .90 trở lên, app tự làm tròn lên số nguyên kế tiếp; vẫn sửa tay được.</span>
             </Field>
             <Field label="Ship Úc AUD"><input type="number" value={draft.shippingAud} onChange={(event) => setDraft({ ...draft, shippingAud: event.target.value })} /></Field>
             <Field label="Cước bay AUD/kg">
