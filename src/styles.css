@@ -2159,6 +2159,40 @@ tbody tr.split-bill-row {
   color: #842432;
 }
 
+.weight-total-panel {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #eef5ff;
+  border: 1px solid rgba(39, 77, 122, 0.16);
+  border-radius: 8px;
+}
+
+.weight-total-panel span,
+.weight-total-panel em {
+  color: #5e554a;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.weight-total-panel strong {
+  display: block;
+  margin-top: 3px;
+  color: #211d17;
+  font-size: 1.18rem;
+}
+
+.weight-total-panel em {
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  background: #fff;
+  border-radius: 999px;
+  font-style: normal;
+}
+
 .form-grid textarea {
   min-height: 90px;
   padding: 10px;
@@ -2504,6 +2538,16 @@ tbody tr.split-bill-row {
 
   .team-avatar-card {
     flex: 1 1 160px;
+  }
+
+  .weight-total-panel {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .weight-total-panel em {
+    width: 100%;
+    text-align: center;
   }
 
   .panel-title {

@@ -93,6 +93,7 @@ const emptyOrder = {
   aud: 0,
   shippingAud: 0,
   intlShippingAud: 0,
+  unitWeightKg: 0,
   weightKg: 0,
   finalWeightRateVnd: defaultFinalWeightRateVnd,
   exchangeRate,
@@ -209,6 +210,10 @@ function compactVnd(value) {
 
 function aud(value) {
   return `A$${formatter.format(Number(value || 0))}`;
+}
+
+function kg(value) {
+  return Number(value || 0).toLocaleString("vi-VN", { maximumFractionDigits: 2 });
 }
 
 function today() {
@@ -457,18 +462,36 @@ function roleLabel(role) {
   return labels[role] ?? role;
 }
 
+function orderUnitWeightKg(order) {
+  const quantity = Math.max(1, money(order?.quantity) || 1);
+  if (Object.prototype.hasOwnProperty.call(order || {}, "unitWeightKg")) {
+    return Math.max(0, money(order.unitWeightKg));
+  }
+  return Math.max(0, money(order?.weightKg) / quantity);
+}
+
+function orderTotalWeightKg(order) {
+  const quantity = Math.max(1, money(order?.quantity) || 1);
+  if (Object.prototype.hasOwnProperty.call(order || {}, "unitWeightKg")) {
+    return orderUnitWeightKg(order) * quantity;
+  }
+  return Math.max(0, money(order?.weightKg));
+}
+
 function orderFinance(order) {
   const rate = money(order.exchangeRate) || exchangeRate;
   const quantity = Math.max(1, money(order.quantity) || 1);
   const unitAud = money(order.aud);
+  const unitWeightKg = orderUnitWeightKg(order);
+  const totalWeightKg = orderTotalWeightKg(order);
   const goodsAud = unitAud * quantity;
   const goodsVnd = goodsAud * rate;
   const domesticShippingVnd = money(order.shippingAud) * rate;
   const purchaseFeeVnd = goodsVnd < orderFeeThresholdVnd ? lowValueBuyingFeeVnd : goodsVnd * highValueBuyingFeeRate;
-  const airFreightAud = money(order.weightKg) * money(order.intlShippingAud);
+  const airFreightAud = totalWeightKg * money(order.intlShippingAud);
   const airFreightVnd = airFreightAud * rate;
   const finalWeightRateVnd = money(order.finalWeightRateVnd) || defaultFinalWeightRateVnd;
-  const finalWeightChargeVnd = money(order.weightKg) * finalWeightRateVnd;
+  const finalWeightChargeVnd = totalWeightKg * finalWeightRateVnd;
   const totalCostVnd = goodsVnd + domesticShippingVnd + purchaseFeeVnd + airFreightVnd + money(order.extraFeeVnd);
   const suggestedTotalThuVnd = goodsVnd + domesticShippingVnd + purchaseFeeVnd + finalWeightChargeVnd + money(order.extraFeeVnd);
   const totalThuVnd = money(order.totalThuVnd) || suggestedTotalThuVnd;
@@ -478,6 +501,8 @@ function orderFinance(order) {
     rate,
     quantity,
     unitAud,
+    unitWeightKg,
+    totalWeightKg,
     goodsAud,
     goodsVnd,
     domesticShippingVnd,
@@ -979,6 +1004,8 @@ function App() {
       assigneeId: order?.assigneeId ?? "staff-vn",
       buyerId: order?.buyerId ?? "staff-vn",
       ...normalizeOrder(order),
+      unitWeightKg: order ? orderUnitWeightKg(order) : 0,
+      weightKg: order ? orderTotalWeightKg(order) : 0,
       batchId: defaultBatch?.id || defaultBatchId,
       intlShippingAud: batchHasFreight(defaultBatch) ? money(defaultBatch.freightAud) : money(order?.intlShippingAud) || 0,
       customerTier: normalizeCustomerTier(order?.customerTier)
@@ -989,6 +1016,9 @@ function App() {
   function saveOrder(event) {
     event.preventDefault();
     const chemistFallback = chemistPreviewFromUrl(draft.productUrl);
+    const quantity = Math.max(1, Number(draft.quantity || 1));
+    const unitWeightKg = Math.max(0, Number(draft.unitWeightKg ?? 0));
+    const totalWeightKg = unitWeightKg * quantity;
     const nextOrder = normalizeOrder({
       ...draft,
       id: getOrderId(draft),
@@ -996,8 +1026,9 @@ function App() {
       source: draft.source || chemistFallback?.siteName || "",
       productImageUrl: draft.productImageUrl || chemistFallback?.imageUrl || "",
       productImageSource: draft.productImageUrl ? draft.productImageSource : (chemistFallback?.imageUrl ? "auto" : draft.productImageSource),
-      quantity: Math.max(1, Number(draft.quantity || 1)),
-      weightKg: Math.max(0, Number(draft.weightKg || 0)),
+      quantity,
+      unitWeightKg,
+      weightKg: totalWeightKg,
       intlShippingAud: batchHasFreight(findOrderBatch(batches, draft))
         ? batchFreightAud(batches, draft.batchId)
         : Math.max(0, Number(draft.intlShippingAud || 0)),
@@ -1749,6 +1780,7 @@ function ProductThumbImage({ item, size = 18 }) {
 }
 
 function ProductCell({ order }) {
+  const finance = orderFinance(order);
   return (
     <div className="order-product-cell">
       <div className="order-product-thumb">
@@ -1756,7 +1788,7 @@ function ProductCell({ order }) {
       </div>
       <div>
         <strong>{order.product || "Chưa nhập sản phẩm"}</strong>
-        <span>SL: {order.quantity} · {money(order.weightKg)}kg</span>
+        <span>SL: {finance.quantity} · {kg(finance.unitWeightKg)}kg/sp · Tổng {kg(finance.totalWeightKg)}kg</span>
         {order.splitBill && (
           <em className="split-bill-badge">Tách bill riêng</em>
         )}
@@ -1928,7 +1960,7 @@ function StockView({ inventory, orders, batches, openStock, openOrder }) {
                 <tr key={order.id} onClick={() => openOrder(order)}>
                   <td data-label="Order"><strong>{order.id}</strong><span>Về VN {order.receivedVnDate || batch?.arrival || "-"}</span></td>
                   <td data-label="Sản phẩm"><ProductCell order={order} /></td>
-                  <td data-label="SL/Kg">{order.quantity}<span>{money(order.weightKg)}kg</span></td>
+                  <td data-label="SL/Kg">{orderFinance(order).quantity}<span>Tổng {kg(orderTotalWeightKg(order))}kg</span></td>
                   <td data-label="Khách">{order.customer}<span>{order.phone}</span></td>
                   <td data-label="Chuyến">{batch?.code || "-"}</td>
                   <td data-label="Kho/ô giữ">{order.vnStockLocation || "Chưa nhập"}</td>
@@ -2094,7 +2126,7 @@ function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, o
     { label: "Đang về VN", value: progress.sentVn, icon: Plane },
     { label: "Chờ giao", value: progress.receivedVn, icon: Boxes }
   ];
-  const scopeWeight = activeWorkflowOrders.reduce((sum, order) => sum + money(order.weightKg), 0);
+  const scopeWeight = activeWorkflowOrders.reduce((sum, order) => sum + orderTotalWeightKg(order), 0);
 
   return (
     <div className="screen-stack buying-workspace">
@@ -2115,7 +2147,7 @@ function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, o
             <h2>{scopeTitle}</h2>
           </div>
           <span>
-            {activeBatch ? `Về VN ${activeBatch.arrival || "-"} · Cutoff ${activeBatch.cutoff || "-"}` : `${activeWorkflowOrders.length} việc mở · ${scopeWeight.toFixed(1)}kg`}
+            {activeBatch ? `Về VN ${activeBatch.arrival || "-"} · Cutoff ${activeBatch.cutoff || "-"}` : `${activeWorkflowOrders.length} việc mở · ${kg(scopeWeight)}kg`}
           </span>
         </div>
         <div className="buying-scope-list">
@@ -2185,7 +2217,7 @@ function PackingWorkflowBoard({ orders, batches, openOrder, updateOrderStatus })
                         <ProductCell order={order} />
                         <div className="workflow-card-meta">
                           <strong>{order.id}</strong>
-                          <span>{order.customer || "-"} · SL {order.quantity} · {money(order.weightKg)}kg</span>
+                          <span>{order.customer || "-"} · SL {orderFinance(order).quantity} · Tổng {kg(orderTotalWeightKg(order))}kg</span>
                           <span>{batch ? `${batch.code || batch.id} · về VN ${batch.arrival || "-"}` : "Chưa xếp chuyến"}</span>
                         </div>
                       </div>
@@ -2648,7 +2680,7 @@ function FlightOrderRow({ order, openOrder, updateOrderStatus }) {
       <ProductCell order={order} />
       <div className="flight-order-meta">
         <strong>{order.id}</strong>
-        <span>{order.customer || "-"} · SL {order.quantity} · {money(order.weightKg)}kg</span>
+        <span>{order.customer || "-"} · SL {orderFinance(order).quantity} · Tổng {kg(orderTotalWeightKg(order))}kg</span>
         <span className={`status-chip ${status}`}>{statusLabel(status)}</span>
       </div>
       <FlightOrderQuickActions order={order} openOrder={openOrder} updateOrderStatus={updateOrderStatus} />
@@ -3232,8 +3264,38 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
                 </div>
               </div>
             </Field>
-            <Field label="Số lượng"><input type="number" min="1" value={draft.quantity} onChange={(event) => setDraft({ ...draft, quantity: event.target.value })} /></Field>
-            <Field label="Số kg"><input type="number" min="0" step="0.1" value={draft.weightKg ?? 0} onChange={(event) => setDraft({ ...draft, weightKg: event.target.value })} /></Field>
+            <div className="weight-total-panel wide">
+              <div>
+                <span>Tổng số kg sản phẩm</span>
+                <strong>{kg(finance.totalWeightKg)}kg</strong>
+              </div>
+              <em>{finance.quantity} sản phẩm × {kg(finance.unitWeightKg)}kg/sp</em>
+            </div>
+            <Field label="Số lượng">
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={draft.quantity}
+                onChange={(event) => {
+                  const nextQuantity = event.target.value;
+                  setDraft({ ...draft, quantity: nextQuantity, weightKg: Math.max(0, Number(draft.unitWeightKg || 0)) * Math.max(1, Number(nextQuantity || 1)) });
+                }}
+              />
+            </Field>
+            <Field label="Kg / sản phẩm">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                value={draft.unitWeightKg ?? 0}
+                onChange={(event) => {
+                  const nextUnitWeight = event.target.value;
+                  setDraft({ ...draft, unitWeightKg: nextUnitWeight, weightKg: Math.max(0, Number(nextUnitWeight || 0)) * Math.max(1, Number(draft.quantity || 1)) });
+                }}
+              />
+            </Field>
             <Field label="Chuyến bay">
               <div className="flight-auto-picker">
                 <select
@@ -3293,8 +3355,8 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
             <div><span>Cọc đã thu</span><strong>{vnd(finance.depositVnd)}</strong></div>
             <div><span>Tiền hàng</span><strong>{vnd(finance.goodsVnd)}</strong></div>
             <div><span>Phí mua hàng</span><strong>{vnd(finance.purchaseFeeVnd)}</strong></div>
-            <div><span>Cước cân gốc</span><strong>{vnd(finance.airFreightVnd)}</strong><small>{money(draft.weightKg)}kg x {aud(draft.intlShippingAud)}</small></div>
-            <div><span>Số tiền cân cuối</span><strong>{vnd(finance.finalWeightChargeVnd)}</strong><small>{money(draft.weightKg)}kg x {vnd(finance.finalWeightRateVnd)}</small></div>
+            <div><span>Cước cân gốc</span><strong>{vnd(finance.airFreightVnd)}</strong><small>{kg(finance.totalWeightKg)}kg x {aud(draft.intlShippingAud)}</small></div>
+            <div><span>Số tiền cân cuối</span><strong>{vnd(finance.finalWeightChargeVnd)}</strong><small>{kg(finance.totalWeightKg)}kg x {vnd(finance.finalWeightRateVnd)}</small></div>
             <div><span>Lãi cân</span><strong>{vnd(finance.weightProfitVnd)}</strong></div>
             <div><span>Ship Úc</span><strong>{vnd(finance.domesticShippingVnd)}</strong></div>
             <div><span>Tổng thu tự động</span><strong>{vnd(finance.suggestedTotalThuVnd)}</strong></div>
