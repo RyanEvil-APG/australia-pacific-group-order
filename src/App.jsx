@@ -400,6 +400,34 @@ function findOrderBatch(batches, order) {
   return batches.find((batch) => String(batch.id || "") === orderBatchId || String(batch.code || "") === orderBatchId) ?? null;
 }
 
+function isArchivedOrder(order) {
+  const status = normalizeOrderStatus(order?.status);
+  return status === "delivered" || status === "cancelled" || Boolean(order?.customerShipped);
+}
+
+function orderSortTime(order, batch) {
+  const archived = isArchivedOrder(order);
+  const dates = archived
+    ? [order?.customerShippedDate, order?.paidInFullDate, order?.receivedVnDate, batch?.arrival, batch?.departure, order?.orderDate]
+    : [order?.orderDate, batch?.cutoff, batch?.departure, batch?.arrival, order?.receivedVnDate];
+  const firstDate = dates.map(dateTime).find((time) => time !== null);
+  return firstDate ?? 0;
+}
+
+function compareOrdersForDesk(a, b, batches) {
+  const aArchived = isArchivedOrder(a);
+  const bArchived = isArchivedOrder(b);
+  if (aArchived !== bArchived) return aArchived ? 1 : -1;
+  const aBatch = findOrderBatch(batches, a);
+  const bBatch = findOrderBatch(batches, b);
+  const timeDiff = orderSortTime(b, bBatch) - orderSortTime(a, aBatch);
+  if (timeDiff !== 0) return timeDiff;
+  const statusRank = { waiting_buy: 0, purchased: 1, sent_vn: 2, received_vn: 3, delivered: 8, cancelled: 9 };
+  const rankDiff = (statusRank[normalizeOrderStatus(a.status)] ?? 5) - (statusRank[normalizeOrderStatus(b.status)] ?? 5);
+  if (rankDiff !== 0) return rankDiff;
+  return String(b.id || "").localeCompare(String(a.id || ""));
+}
+
 function batchHasFreight(batch) {
   return Boolean(batch) && Object.prototype.hasOwnProperty.call(batch, "freightAud");
 }
@@ -902,8 +930,8 @@ function App() {
       const matchesFrom = !dateFrom || String(order.orderDate || "") >= dateFrom;
       const matchesTo = !dateTo || String(order.orderDate || "") <= dateTo;
       return matchesQuery && matchesStatus && matchesBatch && matchesFrom && matchesTo;
-    });
-  }, [orders, deferredQuery, statusFilter, batchFilter, dateFrom, dateTo]);
+    }).sort((a, b) => compareOrdersForDesk(a, b, batches));
+  }, [orders, batches, deferredQuery, statusFilter, batchFilter, dateFrom, dateTo]);
 
   const totals = React.useMemo(() => {
     return orders.reduce(
@@ -1767,22 +1795,54 @@ function OverviewBuyingBoard({ batches, orders, openOrder, openBuyingChecklist, 
 }
 
 function OrdersView(props) {
+  const activeOrders = props.orders.filter((order) => !isArchivedOrder(order));
+  const archivedOrders = props.orders.filter(isArchivedOrder);
+  const archiveFocused = ["delivered", "cancelled"].includes(props.statusFilter);
+  const mainOrders = archiveFocused ? archivedOrders : activeOrders;
+  const archivePreview = archiveFocused || props.query.trim() || props.batchFilter !== "all" || props.dateFrom || props.dateTo ? archivedOrders : archivedOrders.slice(0, 30);
   return (
     <div className="screen-stack">
       <FilterBar {...props} />
+      <section className="orders-work-summary">
+        <div>
+          <span className="eyebrow">Order desk</span>
+          <strong>{activeOrders.length} đơn đang xử lý</strong>
+        </div>
+        <div>
+          <span>Đã giao / hủy</span>
+          <strong>{archivedOrders.length}</strong>
+        </div>
+        <div>
+          <span>Sort</span>
+          <strong>Mới nhất lên trên</strong>
+        </div>
+      </section>
       <div className="panel">
         <div className="panel-title">
           <div>
             <span className="eyebrow">Order records</span>
-            <h2>Hồ sơ đơn hàng</h2>
+            <h2>{archiveFocused ? "Đơn đã giao / hủy" : "Đơn đang xử lý"}</h2>
           </div>
           <button className="primary-button" onClick={() => props.openOrder()}>
             <Plus size={17} />
             Thêm đơn
           </button>
         </div>
-        <OrdersTable orders={props.orders} batches={props.batches} openOrder={props.openOrder} canSeeProfit={props.canSeeProfit} />
+        <OrdersTable orders={mainOrders} batches={props.batches} openOrder={props.openOrder} canSeeProfit={props.canSeeProfit} emptyTitle={archiveFocused ? "Không có đơn archive theo filter này" : "Không còn đơn đang xử lý"} emptyBody={archiveFocused ? "Đổi filter để xem nhóm đơn khác." : "Đơn đã giao hoặc hủy được chuyển xuống archive bên dưới để màn vận hành gọn hơn."} />
       </div>
+      {!archiveFocused && (
+        <div className="panel archive-panel">
+          <div className="panel-title">
+            <div>
+              <span className="eyebrow">Archive</span>
+              <h2>Đơn đã giao / hủy</h2>
+            </div>
+            <span className="archive-count">{archivedOrders.length}</span>
+          </div>
+          <OrdersTable orders={archivePreview} batches={props.batches} openOrder={props.openOrder} canSeeProfit={props.canSeeProfit} compact emptyTitle="Chưa có đơn đã giao hoặc hủy" emptyBody="Khi đơn hoàn tất, app tự đưa xuống đây để không làm rối bảng chính." />
+          {archivedOrders.length > archivePreview.length && <div className="archive-note">Đang hiện {archivePreview.length}/{archivedOrders.length} đơn archive gần nhất. Dùng tìm kiếm hoặc lọc trạng thái Đã giao khách để xem sâu hơn.</div>}
+        </div>
+      )}
     </div>
   );
 }
@@ -1817,7 +1877,7 @@ function ProductCell({ order }) {
   );
 }
 
-function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
+function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit, emptyTitle = "Chưa có đơn hàng", emptyBody = "Bấm Thêm đơn để nhập đơn thật. Dữ liệu demo đã được bỏ." }) {
   const rowLimit = compact ? 10 : 120;
   const visibleOrders = orders.slice(0, rowLimit);
   return (
@@ -1870,7 +1930,7 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
         </tbody>
       </table>
       {orders.length > rowLimit && <EmptyState title={`Đang hiện ${rowLimit}/${orders.length} đơn`} body="Dùng tìm kiếm, lọc tình trạng hoặc lọc thời gian để mở đúng nhóm đơn cần xử lý nhanh hơn." />}
-      {!orders.length && <EmptyState title="Chưa có đơn hàng" body="Bấm Thêm đơn để nhập đơn thật. Dữ liệu demo đã được bỏ." />}
+      {!orders.length && <EmptyState title={emptyTitle} body={emptyBody} />}
     </div>
   );
 }

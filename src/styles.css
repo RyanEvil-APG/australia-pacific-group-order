@@ -621,6 +621,58 @@ th span {
   border-radius: 8px;
 }
 
+.orders-work-summary {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(150px, 0.32fr));
+  gap: 10px;
+}
+
+.orders-work-summary > div {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(43, 33, 19, 0.04);
+}
+
+.orders-work-summary span {
+  color: #746c61;
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.orders-work-summary strong {
+  color: #211d17;
+  font-size: 0.98rem;
+}
+
+.archive-panel {
+  opacity: 0.96;
+}
+
+.archive-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 30px;
+  padding: 0 9px;
+  color: #746c61;
+  background: #f8f3ea;
+  border-radius: 999px;
+  font-weight: 950;
+}
+
+.archive-note {
+  padding: 0 14px 14px;
+  color: #746c61;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
 .split-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.55fr);
@@ -2619,6 +2671,10 @@ tbody tr.split-bill-row {
   .filter-panel {
     grid-template-columns: 1fr;
     gap: 8px;
+  }
+
+  .orders-work-summary {
+    grid-template-columns: 1fr;
   }
 
   .team-strip-panel {
