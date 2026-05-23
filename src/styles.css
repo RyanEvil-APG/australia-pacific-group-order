@@ -1112,7 +1112,7 @@ tbody tr.split-bill-row {
 
 .buying-command-panel {
   display: grid;
-  grid-template-columns: minmax(260px, 0.42fr) minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 0.34fr) minmax(0, 1fr);
   gap: 12px 16px;
   padding: 14px;
   overflow: hidden;
@@ -1212,11 +1212,15 @@ tbody tr.split-bill-row {
   overflow: hidden;
 }
 
+.workflow-panel .panel-title {
+  padding-bottom: 4px;
+}
+
 .workflow-board {
   display: grid;
-  grid-template-columns: repeat(4, minmax(240px, 1fr));
+  grid-template-columns: minmax(330px, 1.25fr) repeat(3, minmax(250px, 1fr));
   gap: 12px;
-  padding: 14px;
+  padding: 12px;
   overflow-x: auto;
 }
 
@@ -1224,11 +1228,15 @@ tbody tr.split-bill-row {
   display: grid;
   align-content: start;
   gap: 10px;
-  min-width: 240px;
+  min-width: 250px;
   padding: 10px;
   background: #f8f3ea;
   border: 1px solid rgba(33, 29, 23, 0.08);
   border-radius: 8px;
+}
+
+.workflow-column:first-child {
+  min-width: 330px;
 }
 
 .workflow-column.warn {
@@ -1281,13 +1289,14 @@ tbody tr.split-bill-row {
 
 .workflow-card-list {
   display: grid;
-  gap: 8px;
+  gap: 7px;
 }
 
 .workflow-card {
   display: grid;
-  gap: 9px;
-  padding: 9px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px;
   background: #fff;
   border: 1px solid rgba(33, 29, 23, 0.09);
   border-radius: 8px;
@@ -1298,15 +1307,60 @@ tbody tr.split-bill-row {
   box-shadow: 0 12px 26px rgba(43, 33, 19, 0.08);
 }
 
+.workflow-card-main {
+  display: grid;
+  gap: 7px;
+}
+
 .workflow-card-meta {
   display: grid;
-  gap: 4px;
+  gap: 3px;
+  padding-top: 2px;
+  border-top: 1px solid rgba(33, 29, 23, 0.08);
+}
+
+.workflow-card-meta strong {
+  overflow-wrap: anywhere;
+  font-size: 0.86rem;
 }
 
 .workflow-card-meta span {
   color: #746c61;
   font-size: 0.76rem;
   font-weight: 850;
+}
+
+.workflow-card .order-product-cell {
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 9px;
+}
+
+.workflow-card .order-product-thumb {
+  width: 42px;
+  height: 42px;
+}
+
+.workflow-card .order-product-cell strong {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 0.9rem;
+  line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.workflow-card .order-product-cell span {
+  font-size: 0.73rem;
+}
+
+.workflow-card .flight-order-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.workflow-card .flight-order-actions button {
+  min-height: 34px;
 }
 
 .workflow-empty {
@@ -2136,6 +2190,10 @@ tbody tr.split-bill-row {
   }
 
   .workflow-column {
+    min-width: 0;
+  }
+
+  .workflow-column:first-child {
     min-width: 0;
   }
 

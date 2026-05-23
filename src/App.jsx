@@ -1775,6 +1775,7 @@ function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, o
     { label: "Đang về VN", value: progress.sentVn, icon: Plane },
     { label: "Chờ giao", value: progress.receivedVn, icon: Boxes }
   ];
+  const scopeWeight = activeWorkflowOrders.reduce((sum, order) => sum + money(order.weightKg), 0);
 
   return (
     <div className="screen-stack buying-workspace">
@@ -1794,7 +1795,9 @@ function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, o
             <span className="eyebrow">Packing scope</span>
             <h2>{scopeTitle}</h2>
           </div>
-          {activeBatch && <span>Về VN {activeBatch.arrival || "-"} · Cutoff {activeBatch.cutoff || "-"}</span>}
+          <span>
+            {activeBatch ? `Về VN ${activeBatch.arrival || "-"} · Cutoff ${activeBatch.cutoff || "-"}` : `${activeWorkflowOrders.length} việc mở · ${scopeWeight.toFixed(1)}kg`}
+          </span>
         </div>
         <div className="buying-scope-list">
           <button className={focusBatchId === "all" ? "active" : ""} type="button" onClick={() => setFocusBatchId("all")}>Tất cả</button>
@@ -1859,11 +1862,13 @@ function PackingWorkflowBoard({ orders, batches, openOrder, updateOrderStatus })
                   const batch = batches.find((item) => item.id === order.batchId);
                   return (
                     <article className="workflow-card" key={order.id} onClick={() => openOrder(order)}>
-                      <ProductCell order={order} />
-                      <div className="workflow-card-meta">
-                        <strong>{order.id}</strong>
-                        <span>{order.customer || "-"} · SL {order.quantity} · {money(order.weightKg)}kg</span>
-                        <span>{batch ? `${batch.code || batch.id} · về VN ${batch.arrival || "-"}` : "Chưa xếp chuyến"}</span>
+                      <div className="workflow-card-main">
+                        <ProductCell order={order} />
+                        <div className="workflow-card-meta">
+                          <strong>{order.id}</strong>
+                          <span>{order.customer || "-"} · SL {order.quantity} · {money(order.weightKg)}kg</span>
+                          <span>{batch ? `${batch.code || batch.id} · về VN ${batch.arrival || "-"}` : "Chưa xếp chuyến"}</span>
+                        </div>
                       </div>
                       <FlightOrderQuickActions order={order} openOrder={openOrder} updateOrderStatus={updateOrderStatus} />
                     </article>
