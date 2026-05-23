@@ -434,6 +434,10 @@ function chemistPreviewFromUrl(target) {
   };
 }
 
+function isChemistWarehouseUrl(target) {
+  return target?.hostname?.toLowerCase?.().includes("chemistwarehouse.com.au");
+}
+
 async function fetchShopifyImage(target, signal) {
   const match = target.pathname.match(/\/products\/([^/?#]+)/i);
   if (!match) return "";
@@ -503,13 +507,13 @@ async function fetchProductPreview(rawUrl) {
     const siteName = readMeta(html, ["og:site_name", "application-name"]) || target.hostname.replace(/^www\./, "");
     const imageUrl = resolveImageUrl(
       [
-        { value: chemistFallback?.imageUrl, hint: "chemist warehouse product image" },
         { value: shopifyImage, hint: "shopify product image" },
         { value: readMeta(html, ["og:image:secure_url", "og:image", "twitter:image", "twitter:image:src"]), hint: "social meta image" },
         { value: readJsonLdImage(html), hint: "json ld product image" },
         { value: readLinkImage(html), hint: "link image" },
         ...readImageTagCandidates(html),
-        ...readGenericImageCandidates(html)
+        ...readGenericImageCandidates(html),
+        { value: chemistFallback?.imageUrl, hint: "chemist warehouse product image" }
       ],
       target
     );
@@ -536,30 +540,46 @@ async function fetchProductPreview(rawUrl) {
   }
 }
 
+async function fetchImageBuffer(target, referer, signal) {
+  const response = await fetch(target, {
+    signal,
+    redirect: "follow",
+    headers: {
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 AustraliaPacificGroupOrder/1.0",
+      accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      referer
+    }
+  });
+  const contentType = response.headers.get("content-type") || "";
+  if (!response.ok || !contentType.startsWith("image/")) {
+    return null;
+  }
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.byteLength > 5 * 1024 * 1024) {
+    throw new Error("image too large");
+  }
+  return { buffer, contentType };
+}
+
 async function fetchImageForProxy(rawUrl, rawReferer) {
   const target = normalizePreviewUrl(rawUrl);
   const referer = rawReferer ? normalizePreviewUrl(rawReferer).toString() : target.origin;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 9000);
   try {
-    const response = await fetch(target, {
-      signal: controller.signal,
-      redirect: "follow",
-      headers: {
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 AustraliaPacificGroupOrder/1.0",
-        accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-        referer
+    const directImage = await fetchImageBuffer(target, referer, controller.signal);
+    if (directImage) return directImage;
+
+    const refererUrl = rawReferer ? normalizePreviewUrl(rawReferer) : null;
+    if (refererUrl && isChemistWarehouseUrl(refererUrl)) {
+      const preview = await fetchProductPreview(refererUrl.toString()).catch(() => null);
+      if (preview?.imageUrl && preview.imageUrl !== target.toString()) {
+        const fallbackImage = await fetchImageBuffer(normalizePreviewUrl(preview.imageUrl), refererUrl.toString(), controller.signal);
+        if (fallbackImage) return fallbackImage;
       }
-    });
-    const contentType = response.headers.get("content-type") || "";
-    if (!response.ok || !contentType.startsWith("image/")) {
-      throw new Error("image fetch failed");
     }
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.byteLength > 5 * 1024 * 1024) {
-      throw new Error("image too large");
-    }
-    return { buffer, contentType };
+
+    throw new Error("image fetch failed");
   } finally {
     clearTimeout(timeout);
   }

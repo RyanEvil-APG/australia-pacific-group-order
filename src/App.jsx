@@ -1424,11 +1424,23 @@ function OrdersView(props) {
   );
 }
 
+function ProductThumbImage({ item, size = 18 }) {
+  const src = productImageSrc(item);
+  const [failedSrc, setFailedSrc] = React.useState("");
+
+  React.useEffect(() => {
+    setFailedSrc("");
+  }, [src]);
+
+  if (!src || failedSrc === src) return <ImageIcon size={size} />;
+  return <img src={src} alt={item?.product || "Product"} onError={() => setFailedSrc(src)} />;
+}
+
 function ProductCell({ order }) {
   return (
     <div className="order-product-cell">
       <div className="order-product-thumb">
-        {order.productImageUrl ? <img src={productImageSrc(order)} alt={order.product || "Product"} /> : <ImageIcon size={18} />}
+        <ProductThumbImage item={order} />
       </div>
       <div>
         <strong>{order.product || "Chưa nhập sản phẩm"}</strong>
@@ -2393,7 +2405,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
             <Field label="Ảnh sản phẩm" wide>
               <div className="product-media-editor">
                 <div className="product-media-preview">
-                  {draft.productImageUrl ? <img src={productImageSrc(draft)} alt={draft.product || "Product"} /> : <ImageIcon size={28} />}
+                  <ProductThumbImage item={draft} size={28} />
                 </div>
                 <div className="product-media-controls">
                   <strong>{draft.productImageUrl ? (draft.productImageSource === "manual" ? "Ảnh upload tay" : "Ảnh lấy từ link") : "Chưa có ảnh sản phẩm"}</strong>
