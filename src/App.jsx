@@ -168,7 +168,7 @@ const navItems = [
   { id: "orders", label: "Đơn hàng", icon: ClipboardList },
   { id: "buying", label: "Mua hàng & Packing", icon: PackageCheck },
   { id: "flights", label: "Chuyến bay", icon: Plane },
-  { id: "after-arrival", label: "Sau hàng về", icon: Truck },
+  { id: "after-arrival", label: "Hàng đã về", icon: Truck },
   { id: "stock", label: "Hàng có sẵn", icon: Boxes },
   { id: "customers", label: "Khách hàng", icon: UserRound },
   { id: "cashflow", label: "Thu/chi", icon: CreditCard },
@@ -1418,7 +1418,7 @@ function OpsReminderPanel({ reminders, openOrder, openAfterArrival }) {
       <div className="panel-title">
         <div>
           <span className="eyebrow">Auto reminders</span>
-          <h2>Việc cần nhắc sau hàng về</h2>
+          <h2>Việc cần nhắc hàng đã về</h2>
         </div>
         <Bell size={18} />
       </div>
@@ -1430,7 +1430,7 @@ function OpsReminderPanel({ reminders, openOrder, openAfterArrival }) {
             <em>{item.detail}</em>
           </button>
         ))}
-        {!visible.length && <EmptyState title="Không có việc trễ sau hàng về" body="Khi đơn đã về VN nhưng chưa kiểm kho, chưa ship hoặc chưa thu đủ tiền, app sẽ tự nhắc ở đây." />}
+        {!visible.length && <EmptyState title="Không có việc trễ ở hàng đã về" body="Khi đơn đã về VN nhưng chưa kiểm kho, chưa ship hoặc chưa thu đủ tiền, app sẽ tự nhắc ở đây." />}
       </div>
     </section>
   );
@@ -2381,6 +2381,39 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder }) {
     },
     { received: 0, shipped: 0, paid: 0, remaining: 0 }
   );
+  const batchGroups = [
+    ...sortedFlightBatches(batches).map((batch) => ({
+      id: batch.id,
+      title: batch.code || batch.id,
+      subtitle: `Về VN ${batch.arrival || "-"} · ${batch.route || "Australia -> Việt Nam"}`,
+      batch,
+      orders: managedOrders.filter((order) => findOrderBatch(batches, order)?.id === batch.id)
+    })),
+    {
+      id: "unassigned",
+      title: "Chưa xếp chuyến",
+      subtitle: "Đơn đã có trạng thái hàng về nhưng chưa link chuyến bay",
+      batch: null,
+      orders: managedOrders.filter((order) => !findOrderBatch(batches, order))
+    }
+  ].filter((group) => group.orders.length);
+
+  function groupStats(groupOrders) {
+    return groupOrders.reduce(
+      (sum, order) => {
+        const finance = orderFinance(order);
+        const status = normalizeOrderStatus(order.status);
+        const paid = Boolean(order.paidInFull || finance.remainingVnd <= 0);
+        sum.total += 1;
+        sum.checked += order.vnStockChecked ? 1 : 0;
+        sum.shipped += (order.customerShipped || status === "delivered") ? 1 : 0;
+        sum.paid += paid ? 1 : 0;
+        sum.remaining += paid ? 0 : finance.remainingVnd;
+        return sum;
+      },
+      { total: 0, checked: 0, shipped: 0, paid: 0, remaining: 0 }
+    );
+  }
 
   function setReceived(order, checked) {
     if (checked) {
@@ -2434,8 +2467,8 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder }) {
     <div className="screen-stack">
       <div className="panel-title standalone">
         <div>
-          <span className="eyebrow">After arrival ops</span>
-          <h2>Sau hàng về VN</h2>
+          <span className="eyebrow">Arrival operations</span>
+          <h2>Hàng đã về</h2>
         </div>
       </div>
       <section className="metric-grid lean">
@@ -2448,70 +2481,92 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder }) {
       <section className="panel post-arrival-panel">
         <div className="panel-title">
           <div>
-            <span className="eyebrow">Delivery & collection</span>
-            <h2>Checklist giao hàng và thu tiền</h2>
+            <span className="eyebrow">Flight-based delivery</span>
+            <h2>Quản lý hàng đã về theo chuyến bay</h2>
           </div>
           <Truck size={18} />
         </div>
-        <div className="post-arrival-grid">
-          {managedOrders.map((order) => {
-            const batch = findOrderBatch(batches, order);
-            const status = normalizeOrderStatus(order.status);
-            const finance = orderFinance(order);
-            const receivedChecked = Boolean(order.receivedVnDate || ["received_vn", "delivered"].includes(status));
-            const shippedChecked = Boolean(order.customerShipped || status === "delivered");
-            const paidChecked = Boolean(order.paidInFull || finance.remainingVnd <= 0);
+        <div className="arrival-flight-groups">
+          {batchGroups.map((group) => {
+            const stats = groupStats(group.orders);
             return (
-              <article className="post-arrival-card" key={order.id}>
-                <button className="post-arrival-product" type="button" onClick={() => openOrder(order)}>
-                  <ProductCell order={order} />
-                  <span>{order.id}</span>
-                </button>
-                <div className="post-arrival-meta">
-                  <span>{order.customer || "-"} · {batch?.code || "Chưa xếp chuyến"}</span>
-                  <span>Dự kiến về VN {batch?.arrival || "-"}</span>
+              <section className="arrival-flight-section" key={group.id}>
+                <div className="arrival-flight-head">
+                  <div>
+                    <strong>{group.title}</strong>
+                    <span>{group.subtitle}</span>
+                  </div>
+                  <em className={stats.remaining ? "warn" : "ok"}>{stats.remaining ? `Còn thu ${vnd(stats.remaining)}` : "Đã thu đủ"}</em>
                 </div>
-                <label className={`ops-check ${receivedChecked ? "done" : ""}`}>
-                  <input type="checkbox" checked={receivedChecked} disabled={shippedChecked} onChange={(event) => setReceived(order, event.target.checked)} />
-                  <span>Đã về VN</span>
-                  <input type="date" value={order.receivedVnDate || ""} onChange={(event) => updateOrder(order.id, { receivedVnDate: event.target.value, vnStockLocation: event.target.value ? (order.vnStockLocation || "Kho VN") : order.vnStockLocation, status: status === "sent_vn" && event.target.value ? "received_vn" : status })} />
-                </label>
-                <label className={`ops-check ${order.vnStockChecked ? "done" : ""}`}>
-                  <input type="checkbox" checked={Boolean(order.vnStockChecked)} onChange={(event) => updateOrder(order.id, { vnStockChecked: event.target.checked })} />
-                  <span>Đã kiểm kho</span>
-                  <input value={order.vnStockLocation || ""} placeholder="Kho/ô giữ hàng" onChange={(event) => updateOrder(order.id, { vnStockLocation: event.target.value })} />
-                </label>
-                <label className={`ops-check ${shippedChecked ? "done" : ""}`}>
-                  <input type="checkbox" checked={shippedChecked} onChange={(event) => setShipped(order, event.target.checked)} />
-                  <span>Đã ship/giao khách</span>
-                  <input type="date" value={order.customerShippedDate || ""} onChange={(event) => updateOrder(order.id, { customerShippedDate: event.target.value, customerShipped: Boolean(event.target.value), status: event.target.value ? "delivered" : status })} />
-                </label>
-                <label className={`ops-check ${paidChecked ? "done" : ""}`}>
-                  <input type="checkbox" checked={paidChecked} onChange={(event) => setPaid(order, event.target.checked)} />
-                  <span>Đã nhận hết tiền</span>
-                  <input
-                    type="date"
-                    value={order.paidInFullDate || ""}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      updateOrder(order.id, {
-                        paidInFullDate: value,
-                        paidInFull: Boolean(value),
-                        depositVnd: value ? Math.max(money(order.depositVnd), finance.totalThuVnd) : order.depositVnd
-                      });
-                    }}
-                  />
-                </label>
-                <div className="post-arrival-money">
-                  <span>Còn thu</span>
-                  <strong>{vnd(paidChecked ? 0 : finance.remainingVnd)}</strong>
+                <div className="arrival-flight-stats">
+                  <span>Đơn <strong>{stats.total}</strong></span>
+                  <span>Đã kiểm kho <strong>{stats.checked}</strong></span>
+                  <span>Đã giao <strong>{stats.shipped}</strong></span>
+                  <span>Thu đủ <strong>{stats.paid}</strong></span>
                 </div>
-                <input className="post-arrival-note" value={order.vnStockNote || ""} placeholder="Ghi chú kho: thiếu món, chờ khách lấy, địa chỉ ship..." onChange={(event) => updateOrder(order.id, { vnStockNote: event.target.value })} />
-              </article>
+                <div className="post-arrival-grid">
+                  {group.orders.map((order) => {
+                    const batch = findOrderBatch(batches, order);
+                    const status = normalizeOrderStatus(order.status);
+                    const finance = orderFinance(order);
+                    const receivedChecked = Boolean(order.receivedVnDate || ["received_vn", "delivered"].includes(status));
+                    const shippedChecked = Boolean(order.customerShipped || status === "delivered");
+                    const paidChecked = Boolean(order.paidInFull || finance.remainingVnd <= 0);
+                    return (
+                      <article className="post-arrival-card" key={order.id}>
+                        <button className="post-arrival-product" type="button" onClick={() => openOrder(order)}>
+                          <ProductCell order={order} />
+                          <span>{order.id}</span>
+                        </button>
+                        <div className="post-arrival-meta">
+                          <span>{order.customer || "-"} · {batch?.code || "Chưa xếp chuyến"}</span>
+                          <span>Về VN {order.receivedVnDate || batch?.arrival || "-"}</span>
+                        </div>
+                        <label className={`ops-check ${receivedChecked ? "done" : ""}`}>
+                          <input type="checkbox" checked={receivedChecked} disabled={shippedChecked} onChange={(event) => setReceived(order, event.target.checked)} />
+                          <span>Đã về VN</span>
+                          <input type="date" value={order.receivedVnDate || ""} onChange={(event) => updateOrder(order.id, { receivedVnDate: event.target.value, vnStockLocation: event.target.value ? (order.vnStockLocation || "Kho VN") : order.vnStockLocation, status: status === "sent_vn" && event.target.value ? "received_vn" : status })} />
+                        </label>
+                        <label className={`ops-check ${order.vnStockChecked ? "done" : ""}`}>
+                          <input type="checkbox" checked={Boolean(order.vnStockChecked)} onChange={(event) => updateOrder(order.id, { vnStockChecked: event.target.checked })} />
+                          <span>Đã kiểm kho</span>
+                          <input value={order.vnStockLocation || ""} placeholder="Kho/ô giữ hàng" onChange={(event) => updateOrder(order.id, { vnStockLocation: event.target.value })} />
+                        </label>
+                        <label className={`ops-check ${shippedChecked ? "done" : ""}`}>
+                          <input type="checkbox" checked={shippedChecked} onChange={(event) => setShipped(order, event.target.checked)} />
+                          <span>Đã ship/giao khách</span>
+                          <input type="date" value={order.customerShippedDate || ""} onChange={(event) => updateOrder(order.id, { customerShippedDate: event.target.value, customerShipped: Boolean(event.target.value), status: event.target.value ? "delivered" : status })} />
+                        </label>
+                        <label className={`ops-check ${paidChecked ? "done" : ""}`}>
+                          <input type="checkbox" checked={paidChecked} onChange={(event) => setPaid(order, event.target.checked)} />
+                          <span>Đã nhận hết tiền</span>
+                          <input
+                            type="date"
+                            value={order.paidInFullDate || ""}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              updateOrder(order.id, {
+                                paidInFullDate: value,
+                                paidInFull: Boolean(value),
+                                depositVnd: value ? Math.max(money(order.depositVnd), finance.totalThuVnd) : order.depositVnd
+                              });
+                            }}
+                          />
+                        </label>
+                        <div className="post-arrival-money">
+                          <span>Còn thu</span>
+                          <strong>{vnd(paidChecked ? 0 : finance.remainingVnd)}</strong>
+                        </div>
+                        <input className="post-arrival-note" value={order.vnStockNote || ""} placeholder="Ghi chú kho: thiếu món, chờ khách lấy, địa chỉ ship..." onChange={(event) => updateOrder(order.id, { vnStockNote: event.target.value })} />
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
             );
           })}
         </div>
-        {!managedOrders.length && <EmptyState title="Chưa có đơn sau hàng về" body="Các đơn đang về VN, đã nhận ở VN hoặc đã giao khách sẽ tự hiện ở đây để staff tick ngày về, ship và thu đủ tiền." />}
+        {!managedOrders.length && <EmptyState title="Chưa có hàng đã về" body="Các đơn đang về VN, đã nhận ở VN hoặc đã giao khách sẽ tự hiện ở đây theo từng chuyến bay." />}
       </section>
     </div>
   );

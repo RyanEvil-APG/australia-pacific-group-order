@@ -1649,11 +1649,86 @@ tbody tr.split-bill-row {
   overflow: hidden;
 }
 
+.arrival-flight-groups {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.arrival-flight-section {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  background: #fffdf8;
+  border: 1px solid rgba(33, 29, 23, 0.09);
+  border-radius: 8px;
+}
+
+.arrival-flight-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.arrival-flight-head strong,
+.arrival-flight-head span {
+  display: block;
+}
+
+.arrival-flight-head span {
+  margin-top: 3px;
+  color: #746c61;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.arrival-flight-head em {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.arrival-flight-head em.warn {
+  color: #9b2c3a;
+  background: #fff3f4;
+}
+
+.arrival-flight-head em.ok {
+  color: #0b7658;
+  background: #edf9f4;
+}
+
+.arrival-flight-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.arrival-flight-stats span {
+  padding: 8px;
+  color: #746c61;
+  background: #f8f3ea;
+  border-radius: 8px;
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.arrival-flight-stats strong {
+  display: block;
+  margin-top: 3px;
+  color: #211d17;
+  font-size: 1rem;
+}
+
 .post-arrival-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
   gap: 10px;
-  padding: 14px;
+  padding: 0;
 }
 
 .post-arrival-card {
@@ -2437,7 +2512,18 @@ tbody tr.split-bill-row {
 
   .post-arrival-grid {
     grid-template-columns: 1fr;
+  }
+
+  .arrival-flight-groups {
     padding: 10px;
+  }
+
+  .arrival-flight-head {
+    display: grid;
+  }
+
+  .arrival-flight-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .ops-check {
