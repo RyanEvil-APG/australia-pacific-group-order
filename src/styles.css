@@ -346,6 +346,10 @@ p {
   min-height: 96px;
 }
 
+.metric-grid.lean {
+  grid-area: metrics;
+}
+
 .metric-card {
   min-height: 104px;
   padding: 13px;
@@ -388,14 +392,26 @@ th span {
 .overview-top-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 0.36fr);
+  grid-template-areas:
+    "metrics buying"
+    "timeline buying"
+    "packing buying";
   gap: 12px;
   align-items: start;
 }
 
+.overview-packing {
+  grid-area: packing;
+  min-width: 0;
+}
+
 .overview-buying-board {
+  grid-area: buying;
   display: grid;
   gap: 10px;
   min-width: 0;
+  max-height: 620px;
+  overflow: hidden;
   padding: 12px;
   background: #fff;
   border: 1px solid rgba(33, 29, 23, 0.09);
@@ -467,6 +483,10 @@ th span {
 .overview-buying-list {
   display: grid;
   gap: 7px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
 }
 
 .overview-buying-item {
@@ -700,6 +720,7 @@ tbody tr.split-bill-row {
 }
 
 .flight-timeline-panel {
+  grid-area: timeline;
   overflow: hidden;
 }
 
@@ -1863,6 +1884,17 @@ tbody tr.split-bill-row {
 
   .overview-top-grid {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "metrics"
+      "buying"
+      "timeline"
+      "packing";
+  }
+
+  .overview-buying-board,
+  .overview-buying-list {
+    max-height: none;
+    overflow: visible;
   }
 
   .auto-summary {
@@ -1946,6 +1978,10 @@ tbody tr.split-bill-row {
   .form-grid,
   .user-fields-grid {
     grid-template-columns: 1fr;
+  }
+
+  .metric-grid.lean {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .auto-summary {

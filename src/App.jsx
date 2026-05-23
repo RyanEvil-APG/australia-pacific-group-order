@@ -1276,56 +1276,58 @@ function OverviewView(props) {
           openBuyingChecklist={openBuyingChecklist}
           updateOrderStatus={updateOrderStatus}
         />
-      </div>
 
-      <section className="panel flight-timeline-panel">
-        <div className="panel-title">
-          <div>
-            <span className="eyebrow">Flight control</span>
-            <h2>Timeline chuyến bay</h2>
+        <section className="panel flight-timeline-panel overview-timeline">
+          <div className="panel-title">
+            <div>
+              <span className="eyebrow">Flight control</span>
+              <h2>Timeline chuyến bay</h2>
+            </div>
+            <Plane size={18} />
           </div>
-          <Plane size={18} />
-        </div>
-        <div className="flight-timeline">
-          {flightTimeline.map(({ batch, batchOrders, remaining, revenue, stage }) => (
-            <button className={`flight-stop ${stage.tone}`} key={batch.id} onClick={() => openBatch(batch)}>
-              <span className="flight-line" />
-              <span className="flight-dot" />
-              <div className="flight-card-head">
-                <strong>{batch.code || batch.id}</strong>
-                <em>{stage.label}</em>
-              </div>
-              <div className="flight-card-date">
-                <span>{dateLabel(stage.focusDate)}</span>
-                <strong>{stage.focusDate || "-"}</strong>
-              </div>
-              <div className="flight-card-meta">
-                <span>{batchOrders.length} đơn</span>
-                <span>Bay: {batch.departure || "-"}</span>
-                <span>Về VN: {batch.arrival || "-"}</span>
-              </div>
-              <div className="flight-card-money">
-                <span>Tổng thu {vnd(revenue)}</span>
-                <strong>Còn thu {vnd(remaining)}</strong>
-              </div>
-            </button>
-          ))}
-          {!flightTimeline.length && (
-            <EmptyState
-              title="Chưa có chuyến bay sắp tới"
-              body="Vào tab Chuyến bay tạo lịch bay, nhập ngày cutoff, ngày bay và ngày về VN để Tổng quan tự lên timeline."
-            />
-          )}
-        </div>
-      </section>
+          <div className="flight-timeline">
+            {flightTimeline.map(({ batch, batchOrders, remaining, revenue, stage }) => (
+              <button className={`flight-stop ${stage.tone}`} key={batch.id} onClick={() => openBatch(batch)}>
+                <span className="flight-line" />
+                <span className="flight-dot" />
+                <div className="flight-card-head">
+                  <strong>{batch.code || batch.id}</strong>
+                  <em>{stage.label}</em>
+                </div>
+                <div className="flight-card-date">
+                  <span>{dateLabel(stage.focusDate)}</span>
+                  <strong>{stage.focusDate || "-"}</strong>
+                </div>
+                <div className="flight-card-meta">
+                  <span>{batchOrders.length} đơn</span>
+                  <span>Bay: {batch.departure || "-"}</span>
+                  <span>Về VN: {batch.arrival || "-"}</span>
+                </div>
+                <div className="flight-card-money">
+                  <span>Tổng thu {vnd(revenue)}</span>
+                  <strong>Còn thu {vnd(remaining)}</strong>
+                </div>
+              </button>
+            ))}
+            {!flightTimeline.length && (
+              <EmptyState
+                title="Chưa có chuyến bay sắp tới"
+                body="Vào tab Chuyến bay tạo lịch bay, nhập ngày cutoff, ngày bay và ngày về VN để Tổng quan tự lên timeline."
+              />
+            )}
+          </div>
+        </section>
 
-      <PackingListSummary
-        title="Packing list chuyến bay"
-        eyebrow="Flight packing"
-        batches={batches}
-        orders={orders}
-        openBuyingChecklist={openBuyingChecklist}
-      />
+        <div className="overview-packing">
+          <PackingListSummary
+            title="Packing list chuyến bay"
+            eyebrow="Flight packing"
+            batches={batches}
+            orders={orders}
+            openBuyingChecklist={openBuyingChecklist}
+          />
+        </div>
+      </div>
 
       <section className="panel">
         <div className="panel-title">
