@@ -337,7 +337,13 @@ p {
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  align-items: start;
+  align-content: start;
   gap: 10px;
+}
+
+.metric-grid.lean .metric-card {
+  min-height: 96px;
 }
 
 .metric-card {
@@ -383,7 +389,7 @@ th span {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 0.36fr);
   gap: 12px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .overview-buying-board {
