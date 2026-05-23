@@ -1761,9 +1761,23 @@ function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, o
   const allVisibleOrders = [...visibleBatches.flatMap((batch) => orders.filter((order) => order.batchId === batch.id)), ...visibleUnassigned];
   const activeWorkflowOrders = allVisibleOrders.filter((order) => packingWorkflowStatuses.some((status) => status.id === normalizeOrderStatus(order.status)));
   const progress = flightOrderProgress(allVisibleOrders);
+  const activeBatch = sortedBatches.find((batch) => batch.id === focusBatchId);
+  const scopeTitle =
+    focusBatchId === "all"
+      ? "Tất cả chuyến"
+      : focusBatchId === "unassigned"
+        ? "Chưa xếp chuyến"
+        : activeBatch?.code || activeBatch?.id || "Chuyến đang chọn";
+  const progressItems = [
+    { label: "Việc mở", value: activeWorkflowOrders.length, icon: ClipboardList },
+    { label: "Chờ mua", value: progress.waitingBuy, icon: PackageCheck, tone: progress.waitingBuy ? "warning" : "success" },
+    { label: "Đã mua", value: progress.purchased, icon: CheckCircle2 },
+    { label: "Đang về VN", value: progress.sentVn, icon: Plane },
+    { label: "Chờ giao", value: progress.receivedVn, icon: Boxes }
+  ];
 
   return (
-    <div className="screen-stack">
+    <div className="screen-stack buying-workspace">
       <div className="panel-title standalone">
         <div>
           <span className="eyebrow">Fulfillment workflow</span>
@@ -1774,19 +1788,13 @@ function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, o
           Thêm chuyến
         </button>
       </div>
-      <section className="metric-grid lean">
-        <Kpi label="Việc đang mở" value={String(activeWorkflowOrders.length)} icon={ClipboardList} />
-        <Kpi label="Chờ mua" value={String(progress.waitingBuy)} icon={PackageCheck} tone={progress.waitingBuy ? "warning" : "success"} />
-        <Kpi label="Đã mua chưa gửi" value={String(progress.purchased)} icon={CheckCircle2} />
-        <Kpi label="Đang về VN" value={String(progress.sentVn)} icon={Plane} />
-        <Kpi label="Chờ giao khách" value={String(progress.receivedVn)} icon={Boxes} />
-      </section>
-      <section className="panel buying-filter-panel">
-        <div className="panel-title">
+      <section className="panel buying-command-panel">
+        <div className="buying-scope-head">
           <div>
             <span className="eyebrow">Packing scope</span>
-            <h2>Chọn chuyến để kiểm hàng</h2>
+            <h2>{scopeTitle}</h2>
           </div>
+          {activeBatch && <span>Về VN {activeBatch.arrival || "-"} · Cutoff {activeBatch.cutoff || "-"}</span>}
         </div>
         <div className="buying-scope-list">
           <button className={focusBatchId === "all" ? "active" : ""} type="button" onClick={() => setFocusBatchId("all")}>Tất cả</button>
@@ -1800,6 +1808,18 @@ function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, o
               Chưa xếp chuyến ({unassignedOrders.length})
             </button>
           )}
+        </div>
+        <div className="buying-progress-strip">
+          {progressItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <div className={`buying-progress-chip ${item.tone || ""}`} key={item.label}>
+                <Icon size={15} />
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+              </div>
+            );
+          })}
         </div>
       </section>
       <PackingWorkflowBoard
