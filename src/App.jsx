@@ -99,6 +99,8 @@ const emptyOrder = {
   extraFeeNote: "",
   totalThuVnd: 0,
   depositVnd: 0,
+  splitBill: false,
+  splitBillNote: "",
   note: ""
 };
 
@@ -223,6 +225,8 @@ function normalizeOrder(order) {
     productUrl: order?.productUrl ?? "",
     productImageUrl: order?.productImageUrl ?? "",
     productImageSource: order?.productImageSource ?? "",
+    splitBill: Boolean(order?.splitBill),
+    splitBillNote: order?.splitBillNote ?? "",
     status: normalizeOrderStatus(order?.status)
   };
 }
@@ -663,7 +667,7 @@ function App() {
   const filteredOrders = React.useMemo(() => {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
     return orders.filter((order) => {
-      const text = `${order.id} ${order.customer} ${order.phone} ${order.product} ${order.source} ${order.productUrl}`.toLowerCase();
+      const text = `${order.id} ${order.customer} ${order.phone} ${order.product} ${order.source} ${order.productUrl} ${order.splitBill ? "tach bill tách bill split bill" : ""} ${order.splitBillNote}`.toLowerCase();
       const matchesQuery = text.includes(normalizedQuery);
       const matchesStatus = statusFilter === "all" || normalizeOrderStatus(order.status) === statusFilter;
       const matchesBatch = batchFilter === "all" || order.batchId === batchFilter;
@@ -1403,6 +1407,11 @@ function ProductCell({ order }) {
       <div>
         <strong>{order.product || "Chưa nhập sản phẩm"}</strong>
         <span>SL: {order.quantity} · {money(order.weightKg)}kg</span>
+        {order.splitBill && (
+          <em className="split-bill-badge">
+            Tách bill riêng{order.splitBillNote ? ` · ${order.splitBillNote}` : ""}
+          </em>
+        )}
       </div>
     </div>
   );
@@ -1429,7 +1438,7 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit }) {
             const finance = orderFinance(order);
             const batch = batches.find((item) => item.id === order.batchId);
             return (
-              <tr key={order.id} onClick={() => openOrder(order)}>
+              <tr key={order.id} className={order.splitBill ? "split-bill-row" : ""} onClick={() => openOrder(order)}>
                 <td data-label="Mã đơn"><strong>{order.id}</strong><span>{order.orderDate}</span><span>{order.source}</span></td>
                 <td data-label="Khách">{order.customer}<span>{order.phone}</span></td>
                 <td data-label="Sản phẩm"><ProductCell order={order} /></td>
@@ -2370,6 +2379,23 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
                 {accounts.filter((account) => account.active).map((account) => <option value={account.id} key={account.id}>{account.displayName}</option>)}
               </select>
             </Field>
+            <div className="split-bill-field">
+              <label className="check-line">
+                <input
+                  type="checkbox"
+                  checked={Boolean(draft.splitBill)}
+                  onChange={(event) => setDraft({ ...draft, splitBill: event.target.checked, splitBillNote: event.target.checked ? draft.splitBillNote : "" })}
+                />
+                Tách bill riêng khi mua
+              </label>
+              {draft.splitBill && (
+                <input
+                  value={draft.splitBillNote ?? ""}
+                  placeholder="Ví dụ: bill riêng cho khách này, bill công ty, bill cá nhân..."
+                  onChange={(event) => setDraft({ ...draft, splitBillNote: event.target.value })}
+                />
+              )}
+            </div>
             <Field label="Tiền hàng AUD / sản phẩm"><input type="number" value={draft.aud} onChange={(event) => setDraft({ ...draft, aud: event.target.value })} /></Field>
             <Field label="Ship Úc AUD"><input type="number" value={draft.shippingAud} onChange={(event) => setDraft({ ...draft, shippingAud: event.target.value })} /></Field>
             <Field label="Giá AUD/kg"><input type="number" min="0" step="0.01" value={draft.intlShippingAud} onChange={(event) => setDraft({ ...draft, intlShippingAud: event.target.value })} /></Field>
@@ -2382,6 +2408,12 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
             <Field label="Note" wide><textarea value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} /></Field>
           </div>
           <div className="auto-summary">
+            {draft.splitBill && (
+              <div className="summary-split-bill">
+                <strong>Tách bill riêng</strong>
+                <span>{draft.splitBillNote || "Order này cần bill riêng khi đi mua."}</span>
+              </div>
+            )}
             <div className="summary-hero"><span>Còn phải thu</span><strong>{vnd(finance.remainingVnd)}</strong></div>
             <div className="summary-hero"><span>Tổng thu</span><strong>{vnd(finance.totalThuVnd)}</strong></div>
             <div><span>Tổng chi phí gốc</span><strong>{vnd(finance.totalCostVnd)}</strong></div>
