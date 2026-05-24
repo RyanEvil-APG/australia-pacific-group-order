@@ -631,20 +631,21 @@ function orderTotalWeightKg(order) {
   return Math.max(0, money(order?.weightKg));
 }
 
-function orderFinance(order) {
+function orderFinance(order, billingWeightOverrideKg = null) {
   const rate = money(order.exchangeRate) || exchangeRate;
   const quantity = Math.max(1, money(order.quantity) || 1);
   const unitAud = money(order.aud);
   const unitWeightKg = orderUnitWeightKg(order);
   const totalWeightKg = orderTotalWeightKg(order);
+  const billingWeightKg = billingWeightOverrideKg !== null ? Math.max(0, money(billingWeightOverrideKg)) : totalWeightKg;
   const goodsAud = unitAud * quantity;
   const goodsVnd = goodsAud * rate;
   const domesticShippingVnd = money(order.shippingAud) * rate;
   const purchaseFeeVnd = goodsVnd < orderFeeThresholdVnd ? lowValueBuyingFeeVnd : goodsVnd * highValueBuyingFeeRate;
-  const airFreightAud = totalWeightKg * money(order.intlShippingAud);
+  const airFreightAud = billingWeightKg * money(order.intlShippingAud);
   const airFreightVnd = airFreightAud * rate;
   const finalWeightRateVnd = money(order.finalWeightRateVnd) || defaultFinalWeightRateVnd;
-  const finalWeightChargeVnd = totalWeightKg * finalWeightRateVnd;
+  const finalWeightChargeVnd = billingWeightKg * finalWeightRateVnd;
   const totalCostVnd = goodsVnd + domesticShippingVnd + purchaseFeeVnd + airFreightVnd + money(order.extraFeeVnd);
   const suggestedTotalThuVnd = goodsVnd + domesticShippingVnd + purchaseFeeVnd + finalWeightChargeVnd + money(order.extraFeeVnd);
   const totalThuVnd = money(order.totalThuVnd) || suggestedTotalThuVnd;
@@ -656,6 +657,8 @@ function orderFinance(order) {
     unitAud,
     unitWeightKg,
     totalWeightKg,
+    billingWeightKg,
+    weightNeedsCheck: unitWeightKg <= 0,
     goodsAud,
     goodsVnd,
     domesticShippingVnd,
@@ -678,8 +681,27 @@ function batchOrderRows(batch, orders) {
   return orders.filter((order) => order.batchId === batch?.id);
 }
 
+function batchBillableOrderRows(batch, orders) {
+  return batchOrderRows(batch, orders).filter((order) => !["cancelled", "out_of_stock"].includes(normalizeOrderStatus(order.status)));
+}
+
+function orderBillingWeightKg(order, batch, orders) {
+  const actualWeightKg = batchActualWeightKg(batch);
+  const billableOrders = batchBillableOrderRows(batch, orders);
+  const belongsToBatch = billableOrders.some((item) => item.id === order?.id);
+  if (actualWeightKg > 0 && billableOrders.length > 0 && belongsToBatch) {
+    return actualWeightKg / billableOrders.length;
+  }
+  return orderTotalWeightKg(order);
+}
+
+function orderFinanceForBatch(order, batch, orders) {
+  const pricedOrder = batchHasPricing(batch) ? { ...order, ...batchPricingPatch(batch) } : order;
+  return orderFinance(pricedOrder, batch ? orderBillingWeightKg(order, batch, orders) : null);
+}
+
 function batchEstimatedWeightKg(batch, orders) {
-  return batchOrderRows(batch, orders).reduce((sum, order) => sum + orderTotalWeightKg(order), 0);
+  return batchBillableOrderRows(batch, orders).reduce((sum, order) => sum + orderTotalWeightKg(order), 0);
 }
 
 function batchActualWeightKg(batch) {
@@ -693,24 +715,26 @@ function batchChargeWeightKg(batch, orders) {
 
 function batchFinanceSummary(batch, orders) {
   const batchOrders = batchOrderRows(batch, orders);
-  const estimatedWeightKg = batchOrders.reduce((sum, order) => sum + orderTotalWeightKg(order), 0);
+  const billableOrders = batchBillableOrderRows(batch, orders);
+  const estimatedWeightKg = billableOrders.reduce((sum, order) => sum + orderTotalWeightKg(order), 0);
   const actualWeightKg = batchActualWeightKg(batch);
   const chargeWeightKg = actualWeightKg > 0 ? actualWeightKg : estimatedWeightKg;
   const freightAudPerKg = money(batch?.freightAud);
   const rate = money(batch?.exchangeRate) || exchangeRate;
   const actualAirFreightAud = chargeWeightKg * freightAudPerKg;
   const actualAirFreightVnd = actualAirFreightAud * rate;
-  const estimatedAirFreightVnd = batchOrders.reduce((sum, order) => sum + orderFinance(order).airFreightVnd, 0);
-  const revenue = batchOrders.reduce((sum, order) => sum + orderFinance(order).totalThuVnd, 0);
-  const deposit = batchOrders.reduce((sum, order) => sum + orderFinance(order).depositVnd, 0);
-  const remaining = batchOrders.reduce((sum, order) => sum + orderFinance(order).remainingVnd, 0);
-  const orderCost = batchOrders.reduce((sum, order) => sum + orderFinance(order).totalCostVnd, 0);
+  const estimatedAirFreightVnd = billableOrders.reduce((sum, order) => sum + orderFinance(order).airFreightVnd, 0);
+  const revenue = batchOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).totalThuVnd, 0);
+  const deposit = batchOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).depositVnd, 0);
+  const remaining = batchOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).remainingVnd, 0);
+  const orderCost = batchOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).totalCostVnd, 0);
   return {
     batchOrders,
+    billableOrders,
     estimatedWeightKg,
     actualWeightKg,
     chargeWeightKg,
-    avgActualWeightKg: actualWeightKg > 0 && batchOrders.length ? actualWeightKg / batchOrders.length : 0,
+    avgActualWeightKg: actualWeightKg > 0 && billableOrders.length ? actualWeightKg / billableOrders.length : 0,
     freightAudPerKg,
     rate,
     actualAirFreightAud,
@@ -720,7 +744,7 @@ function batchFinanceSummary(batch, orders) {
     deposit,
     remaining,
     orderCost,
-    adjustedCost: orderCost - estimatedAirFreightVnd + actualAirFreightVnd
+    adjustedCost: actualWeightKg > 0 ? orderCost : orderCost - estimatedAirFreightVnd + actualAirFreightVnd
   };
 }
 
@@ -1237,7 +1261,7 @@ function App() {
   const totals = React.useMemo(() => {
     return orders.reduce(
       (sum, order) => {
-        const finance = orderFinance(order);
+        const finance = orderFinanceForBatch(order, findOrderBatch(batches, order), orders);
         sum.revenue += finance.totalThuVnd;
         sum.deposit += finance.depositVnd;
         sum.remaining += finance.remainingVnd;
@@ -1248,7 +1272,7 @@ function App() {
       },
       { revenue: 0, deposit: 0, remaining: 0, cost: 0, extraFees: 0, profit: 0 }
     );
-  }, [orders]);
+  }, [orders, batches]);
 
   function getAccount(id) {
     return accounts.find((account) => account.id === id) ?? accounts[0];
@@ -1934,7 +1958,7 @@ function afterArrivalReminders(orders, batches) {
       const batch = findOrderBatch(batches, order);
       const status = normalizeOrderStatus(order.status);
       if (status === "cancelled" || !orderIsInVn(order, batch)) return [];
-      const finance = orderFinance(order);
+      const finance = orderFinanceForBatch(order, batch, orders);
       const reminders = [];
       if (!order.receivedVnDate && status === "sent_vn") {
         reminders.push({ type: "stock", label: "Cần xác nhận về VN", tone: "warning", order, batch, detail: `Dự kiến về ${batch?.arrival || "-"}` });
@@ -2036,8 +2060,8 @@ function OverviewView(props) {
   const flightTimeline = overviewBatches
     .map((batch) => {
       const batchOrders = orders.filter((order) => order.batchId === batch.id);
-      const remaining = batchOrders.reduce((sum, order) => sum + orderFinance(order).remainingVnd, 0);
-      const revenue = batchOrders.reduce((sum, order) => sum + orderFinance(order).totalThuVnd, 0);
+      const remaining = batchOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).remainingVnd, 0);
+      const revenue = batchOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).totalThuVnd, 0);
       const stage = flightTimelineStage(batch);
       return { batch, batchOrders, remaining, revenue, stage };
     })
@@ -2179,7 +2203,7 @@ function OverviewBuyingBoard({ batches, orders, openOrder, openBuyingChecklist, 
       <div className="overview-buying-list">
         {waitingOrders.slice(0, 3).map((order) => (
           <div className="overview-buying-item" key={order.id} onClick={() => openOrder(order)}>
-            <ProductCell order={order} />
+            <ProductCell order={order} batch={nearestBatch} orders={orders} />
             <div className="overview-buying-actions">
               <button type="button" disabled={canEditOrder && !canEditOrder(order)} onClick={(event) => { event.stopPropagation(); updateOrderStatus(order.id, "purchased"); }}>Đã mua</button>
               <button className="warning-action" type="button" disabled={canEditOrder && !canEditOrder(order)} onClick={(event) => { event.stopPropagation(); updateOrderStatus(order.id, "out_of_stock"); }}>Hết hàng</button>
@@ -2303,8 +2327,9 @@ function ProductThumbImage({ item, size = 18 }) {
   return <img src={src} alt={item?.product || "Product"} onError={() => setFailedSrc(src)} />;
 }
 
-function ProductCell({ order }) {
-  const finance = orderFinance(order);
+function ProductCell({ order, batch = null, orders = [] }) {
+  const finance = batch ? orderFinanceForBatch(order, batch, orders) : orderFinance(order);
+  const usesSharedFlightWeight = batchActualWeightKg(batch) > 0 && finance.billingWeightKg !== finance.totalWeightKg;
   return (
     <div className="order-product-cell">
       <div className="order-product-thumb">
@@ -2313,6 +2338,8 @@ function ProductCell({ order }) {
       <div>
         <strong>{order.product || "Chưa nhập sản phẩm"}</strong>
         <span>SL: {finance.quantity} · {kg(finance.unitWeightKg)}kg/sp · Tổng {kg(finance.totalWeightKg)}kg</span>
+        {usesSharedFlightWeight && <em className="billing-weight-badge">Tinh cuoc {kg(finance.billingWeightKg)}kg</em>}
+        {finance.weightNeedsCheck && <em className="kg-missing-badge">Can tim kg san pham</em>}
         {order.splitBill && (
           <em className="split-bill-badge">Tách bill riêng</em>
         )}
@@ -2339,13 +2366,13 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit, emptyT
         </thead>
         <tbody>
           {visibleOrders.map((order) => {
-            const finance = orderFinance(order);
             const batch = batches.find((item) => item.id === order.batchId);
+            const finance = orderFinanceForBatch(order, batch, orders);
             return (
               <tr key={order.id} className={order.splitBill ? "split-bill-row" : ""} onClick={() => openOrder(order)}>
                 <td data-label="Mã đơn"><strong>{order.id}</strong><span>{order.orderDate}</span><span>{order.source}</span></td>
                 <td data-label="Khách">{order.customer}<span>{order.phone}</span></td>
-                <td data-label="Sản phẩm"><ProductCell order={order} /></td>
+                <td data-label="Sản phẩm"><ProductCell order={order} batch={batch} orders={orders} /></td>
                 <td data-label="Tình trạng"><span className={`status-chip ${normalizeOrderStatus(order.status)}`}>{statusLabel(order.status)}</span></td>
                 <td data-label="Chuyến bay">
                   {batch?.code || "Chưa xếp"}
@@ -2483,8 +2510,8 @@ function StockView({ inventory, orders, batches, openStock, openOrder }) {
               {linkedOrderStock.map(({ order, batch }) => (
                 <tr key={order.id} onClick={() => openOrder(order)}>
                   <td data-label="Order"><strong>{order.id}</strong><span>Về VN {order.receivedVnDate || batch?.arrival || "-"}</span></td>
-                  <td data-label="Sản phẩm"><ProductCell order={order} /></td>
-                  <td data-label="SL/Kg">{orderFinance(order).quantity}<span>Tổng {kg(orderTotalWeightKg(order))}kg</span></td>
+                  <td data-label="Sản phẩm"><ProductCell order={order} batch={batch} orders={orders} /></td>
+                  <td data-label="SL/Kg">{orderFinanceForBatch(order, batch, orders).quantity}<span>Tổng {kg(orderTotalWeightKg(order))}kg</span></td>
                   <td data-label="Khách">{order.customer}<span>{order.phone}</span></td>
                   <td data-label="Chuyến">{batch?.code || "-"}</td>
                   <td data-label="Kho/ô giữ">{order.vnStockLocation || "Chưa nhập"}</td>
@@ -2692,11 +2719,11 @@ function StockoutsView({ batches, orders, openOrder, updateOrderStatus, moveOutO
                   const currentBatch = findOrderBatch(batches, order);
                   const originalBatch = findOrderBatch(batches, { batchId: order.outOfStockBatchId || order.batchId });
                   const nextBatch = nextOpenBatchAfter(batches, currentBatch || originalBatch, order.orderDate);
-                  const finance = orderFinance(order);
+                  const finance = orderFinanceForBatch(order, currentBatch, orders);
                   const editable = !canEditOrder || canEditOrder(order);
                   return (
                     <article className="stockout-card" key={order.id} onClick={() => openOrder(order)}>
-                      <ProductCell order={order} />
+                      <ProductCell order={order} batch={currentBatch} orders={orders} />
                       <div className="stockout-main">
                         <strong>{order.product || order.id}</strong>
                         <span>{order.customer || "-"} · SL {finance.quantity} · {kg(finance.totalWeightKg)}kg</span>
@@ -2864,13 +2891,14 @@ function PackingWorkflowBoard({ orders, batches, openOrder, updateOrderStatus, c
               <div className="workflow-card-list">
                 {columnOrders.map((order) => {
                   const batch = batches.find((item) => item.id === order.batchId);
+                  const finance = orderFinanceForBatch(order, batch, orders);
                   return (
                     <article className="workflow-card" key={order.id} onClick={() => openOrder(order)}>
                       <div className="workflow-card-main">
-                        <ProductCell order={order} />
+                        <ProductCell order={order} batch={batch} orders={orders} />
                         <div className="workflow-card-meta">
                           <strong>{order.id}</strong>
-                          <span>{order.customer || "-"} · SL {orderFinance(order).quantity} · Tổng {kg(orderTotalWeightKg(order))}kg</span>
+                          <span>{order.customer || "-"} · SL {finance.quantity} · Tong {kg(finance.totalWeightKg)}kg</span>
                           <span>{batch ? `${batch.code || batch.id} · về VN ${batch.arrival || "-"}` : "Chưa xếp chuyến"}</span>
                         </div>
                       </div>
@@ -2902,9 +2930,9 @@ function FlightsViewLegacy({ batches, orders, openBatch, openOrder, openBuyingCh
       sum.purchased += progress.purchased;
       sum.sentVn += progress.sentVn;
       sum.freightAud += money(batch.freightAud);
-      sum.remaining += batchOrders.reduce((orderSum, order) => orderSum + orderFinance(order).remainingVnd, 0);
-      sum.revenue += batchOrders.reduce((orderSum, order) => orderSum + orderFinance(order).totalThuVnd, 0);
-      sum.cost += batchOrders.reduce((orderSum, order) => orderSum + orderFinance(order).totalCostVnd, 0);
+      sum.remaining += batchOrders.reduce((orderSum, order) => orderSum + orderFinanceForBatch(order, batch, orders).remainingVnd, 0);
+      sum.revenue += batchOrders.reduce((orderSum, order) => orderSum + orderFinanceForBatch(order, batch, orders).totalThuVnd, 0);
+      sum.cost += batchOrders.reduce((orderSum, order) => orderSum + orderFinanceForBatch(order, batch, orders).totalCostVnd, 0);
       return sum;
     },
     { orders: 0, waitingBuy: 0, outOfStock: 0, purchased: 0, sentVn: 0, freightAud: 0, remaining: 0, revenue: 0, cost: 0 }
@@ -2967,8 +2995,8 @@ function FlightsViewLegacy({ batches, orders, openBatch, openOrder, openBuyingCh
               {upcomingBatches.map((batch) => {
                 const batchOrders = orders.filter((order) => order.batchId === batch.id);
                 const progress = flightOrderProgress(batchOrders);
-                const revenue = batchOrders.reduce((sum, order) => sum + orderFinance(order).totalThuVnd, 0);
-                const remaining = batchOrders.reduce((sum, order) => sum + orderFinance(order).remainingVnd, 0);
+                const revenue = batchOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).totalThuVnd, 0);
+                const remaining = batchOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).remainingVnd, 0);
                 return (
                   <tr key={batch.id} onClick={() => openBatch(batch)}>
                     <td data-label="Chuyến/đợt"><strong>{batch.code || batch.id}</strong><span>{batch.route}</span></td>
@@ -3006,7 +3034,7 @@ function FlightsViewLegacy({ batches, orders, openBatch, openOrder, openBuyingCh
         {upcomingBatches.map((batch) => {
           const batchOrders = orders.filter((order) => order.batchId === batch.id);
           const progress = flightOrderProgress(batchOrders);
-          const remaining = batchOrders.reduce((sum, order) => sum + orderFinance(order).remainingVnd, 0);
+          const remaining = batchOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).remainingVnd, 0);
           return (
             <article className="batch-card" key={batch.id}>
               <div className="batch-card-head">
@@ -3228,7 +3256,7 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
                 const finance = batchFinanceSummary(batch, orders);
                 const batchOrders = finance.batchOrders;
                 const shipped = batchOrders.filter((order) => order.customerShipped || normalizeOrderStatus(order.status) === "delivered").length;
-                const paid = batchOrders.filter((order) => order.paidInFull || orderFinance(order).remainingVnd <= 0).length;
+                const paid = batchOrders.filter((order) => order.paidInFull || orderFinanceForBatch(order, batch, orders).remainingVnd <= 0).length;
                 return (
                   <tr key={batch.id} onClick={() => openBatch(batch)}>
                     <td data-label="Chuyến"><strong>{batch.code || batch.id}</strong><span>{batch.route}</span></td>
@@ -3256,6 +3284,7 @@ function FlightChecklistPanel({ batches, orders, unassignedOrders, openOrder, up
       id: batch.id,
       title: batch.code || batch.id,
       subtitle: `Về VN ${batch.arrival || "-"} · Cutoff ${batch.cutoff || "-"}`,
+      batch,
       orders: orders.filter((order) => order.batchId === batch.id)
     })),
     ...(unassignedOrders.length
@@ -3303,7 +3332,7 @@ function FlightChecklistPanel({ batches, orders, unassignedOrders, openOrder, up
               <div className="flight-order-list">
                 {actionableOrders.slice(0, 12).map((order) => {
                   return (
-                    <FlightOrderRow order={order} openOrder={openOrder} updateOrderStatus={updateOrderStatus} canEditOrder={canEditOrder} key={order.id} />
+                    <FlightOrderRow order={order} batch={group.batch} orders={orders} openOrder={openOrder} updateOrderStatus={updateOrderStatus} canEditOrder={canEditOrder} key={order.id} />
                   );
                 })}
                 {!actionableOrders.length && <EmptyState title="Không còn đơn cần xử lý" body="Các đơn trong chuyến này đã giao/hủy hoặc chưa có đơn nào được xếp vào chuyến." />}
@@ -3336,14 +3365,16 @@ function FlightOrderQuickActions({ order, openOrder, updateOrderStatus, canEditO
   );
 }
 
-function FlightOrderRow({ order, openOrder, updateOrderStatus, canEditOrder }) {
+function FlightOrderRow({ order, batch = null, orders = [], openOrder, updateOrderStatus, canEditOrder }) {
   const status = normalizeOrderStatus(order.status);
+  const finance = batch ? orderFinanceForBatch(order, batch, orders) : orderFinance(order);
   return (
     <div className="flight-order-item" onClick={() => openOrder(order)}>
-      <ProductCell order={order} />
+      <ProductCell order={order} batch={batch} orders={orders} />
       <div className="flight-order-meta">
         <strong>{order.id}</strong>
-        <span>{order.customer || "-"} · SL {orderFinance(order).quantity} · Tổng {kg(orderTotalWeightKg(order))}kg</span>
+        {finance.billingWeightKg !== finance.totalWeightKg && <span>Kg tinh cuoc {kg(finance.billingWeightKg)}kg</span>}
+        <span>{order.customer || "-"} · SL {finance.quantity} · Tong {kg(finance.totalWeightKg)}kg</span>
         <span className={`status-chip ${status}`}>{statusLabel(status)}</span>
       </div>
       <FlightOrderQuickActions order={order} openOrder={openOrder} updateOrderStatus={updateOrderStatus} canEditOrder={canEditOrder} />
@@ -3361,8 +3392,8 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrde
       return managedStatuses.has(status) || order.receivedVnDate || order.customerShipped || order.paidInFull;
     })
     .sort((a, b) => {
-      const financeA = orderFinance(a);
-      const financeB = orderFinance(b);
+      const financeA = orderFinanceForBatch(a, findOrderBatch(batches, a), orders);
+      const financeB = orderFinanceForBatch(b, findOrderBatch(batches, b), orders);
       const scoreA = (a.receivedVnDate ? 0 : 4) + (a.customerShipped ? 0 : 2) + ((a.paidInFull || financeA.remainingVnd <= 0) ? 0 : 1);
       const scoreB = (b.receivedVnDate ? 0 : 4) + (b.customerShipped ? 0 : 2) + ((b.paidInFull || financeB.remainingVnd <= 0) ? 0 : 1);
       if (scoreA !== scoreB) return scoreB - scoreA;
@@ -3370,7 +3401,7 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrde
     });
   const totals = managedOrders.reduce(
     (sum, order) => {
-      const finance = orderFinance(order);
+      const finance = orderFinanceForBatch(order, findOrderBatch(batches, order), orders);
       const paid = Boolean(order.paidInFull || finance.remainingVnd <= 0);
       sum.received += (order.receivedVnDate || ["received_vn", "delivered"].includes(normalizeOrderStatus(order.status))) ? 1 : 0;
       sum.shipped += (order.customerShipped || normalizeOrderStatus(order.status) === "delivered") ? 1 : 0;
@@ -3418,7 +3449,7 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrde
   function groupStats(groupOrders) {
     return groupOrders.reduce(
       (sum, order) => {
-        const finance = orderFinance(order);
+        const finance = orderFinanceForBatch(order, findOrderBatch(batches, order), orders);
         const status = normalizeOrderStatus(order.status);
         const paid = Boolean(order.paidInFull || finance.remainingVnd <= 0);
         sum.total += 1;
@@ -3465,7 +3496,7 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrde
   }
 
   function setPaid(order, checked) {
-    const finance = orderFinance(order);
+    const finance = orderFinanceForBatch(order, findOrderBatch(batches, order), orders);
     if (checked) {
       updateOrder(order.id, {
         paidInFull: true,
@@ -3546,7 +3577,7 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrde
                   {group.orders.map((order) => {
                     const batch = findOrderBatch(batches, order);
                     const status = normalizeOrderStatus(order.status);
-                    const finance = orderFinance(order);
+                    const finance = orderFinanceForBatch(order, batch, orders);
                     const receivedChecked = Boolean(order.receivedVnDate || ["received_vn", "delivered"].includes(status));
                     const shippedChecked = Boolean(order.customerShipped || status === "delivered");
                     const paidChecked = Boolean(order.paidInFull || finance.remainingVnd <= 0);
@@ -3554,7 +3585,7 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrde
                     return (
                       <article className={`post-arrival-card ${editable ? "" : "locked"}`} key={order.id}>
                         <button className="post-arrival-product" type="button" onClick={() => openOrder(order)}>
-                          <ProductCell order={order} />
+                          <ProductCell order={order} batch={batch} orders={orders} />
                           <span>{order.id}</span>
                         </button>
                         <div className="post-arrival-meta">
@@ -3785,9 +3816,14 @@ function Field({ label, children, wide }) {
 }
 
 function OrderModal({ draft, setDraft, batches, accounts, customers, orders, sessionToken, canEditOrder, save, remove, close }) {
-  const finance = orderFinance(draft);
   const canEdit = !canEditOrder || canEditOrder(draft);
   const selectedBatch = batches.find((batch) => batch.id === draft.batchId);
+  const financeOrder = { ...draft, id: draft.id || "__draft_order__" };
+  const draftOrdersForFinance = selectedBatch
+    ? [...orders.filter((order) => order.id !== financeOrder.id), financeOrder]
+    : orders;
+  const finance = orderFinanceForBatch(financeOrder, selectedBatch, draftOrdersForFinance);
+  const batchUsesSharedWeight = batchActualWeightKg(selectedBatch) > 0 && finance.billingWeightKg !== finance.totalWeightKg;
   const suggestedBatch = autoBatchForOrder(batches, draft.orderDate || today());
   const [previewStatus, setPreviewStatus] = React.useState("idle");
   const [previewError, setPreviewError] = React.useState("");
@@ -4005,6 +4041,10 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
                 <span>Tổng số kg sản phẩm</span>
                 <strong>{kg(finance.totalWeightKg)}kg</strong>
               </div>
+              <div className={batchUsesSharedWeight ? "live" : ""}>
+                <span>Kg tinh cuoc</span>
+                <strong>{kg(finance.billingWeightKg)}kg</strong>
+              </div>
               <em>{finance.quantity} sản phẩm × {kg(finance.unitWeightKg)}kg/sp</em>
             </div>
             <Field label="Số lượng">
@@ -4103,8 +4143,8 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
             <div><span>Cọc đã thu</span><strong>{vnd(finance.depositVnd)}</strong></div>
             <div><span>Tiền hàng</span><strong>{vnd(finance.goodsVnd)}</strong></div>
             <div><span>Phí mua hàng</span><strong>{vnd(finance.purchaseFeeVnd)}</strong></div>
-            <div><span>Cước cân gốc</span><strong>{vnd(finance.airFreightVnd)}</strong><small>{kg(finance.totalWeightKg)}kg x {aud(draft.intlShippingAud)}</small></div>
-            <div><span>Số tiền cân cuối</span><strong>{vnd(finance.finalWeightChargeVnd)}</strong><small>{kg(finance.totalWeightKg)}kg x {vnd(finance.finalWeightRateVnd)}</small></div>
+            <div><span>Cước cân gốc</span><strong>{vnd(finance.airFreightVnd)}</strong><small>{kg(finance.billingWeightKg)}kg x {aud(draft.intlShippingAud)}</small></div>
+            <div><span>Số tiền cân cuối</span><strong>{vnd(finance.finalWeightChargeVnd)}</strong><small>{kg(finance.billingWeightKg)}kg x {vnd(finance.finalWeightRateVnd)}</small></div>
             <div><span>Lãi cân</span><strong>{vnd(finance.weightProfitVnd)}</strong></div>
             <div><span>Ship Úc</span><strong>{vnd(finance.domesticShippingVnd)}</strong></div>
             <div><span>Tổng thu tự động</span><strong>{vnd(finance.suggestedTotalThuVnd)}</strong></div>
@@ -4129,6 +4169,7 @@ function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderSt
   const progress = flightOrderProgress(batchOrders);
   const finance = batchFinanceSummary(draft, orders);
   const totalWeight = finance.estimatedWeightKg;
+  const billingOrderCount = finance.billableOrders.length;
   function updateFlightDate(field, value) {
     const nextDraft = { ...draft, [field]: value };
     setDraft({
@@ -4208,7 +4249,7 @@ function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderSt
           </div>
           <div className="flight-order-list compact">
             {batchOrders.map((order) => (
-              <FlightOrderRow order={order} openOrder={openOrder} updateOrderStatus={updateOrderStatus} canEditOrder={canEditOrder} key={order.id} />
+              <FlightOrderRow order={order} batch={draft} orders={orders} openOrder={openOrder} updateOrderStatus={updateOrderStatus} canEditOrder={canEditOrder} key={order.id} />
             ))}
             {!batchOrders.length && (
               <EmptyState title="Chưa có đơn cần xử lý trong chuyến" body="Vào Đơn hàng, mở từng đơn và chọn chuyến bay này để gom hàng vào đúng đợt." />

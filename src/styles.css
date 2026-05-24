@@ -1752,6 +1752,31 @@ tbody tr.split-bill-row {
   font-weight: 950;
 }
 
+.billing-weight-badge,
+.kg-missing-badge {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 6px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.billing-weight-badge {
+  color: #17446f;
+  background: #eaf5ff;
+  border: 1px solid rgba(39, 77, 122, 0.16);
+}
+
+.kg-missing-badge {
+  color: #842432;
+  background: #fff0f1;
+  border: 1px solid rgba(155, 44, 58, 0.2);
+}
+
 .workflow-card-list {
   display: grid;
   gap: 7px;
@@ -2672,7 +2697,8 @@ tbody tr.split-bill-row {
 
 .weight-total-panel {
   grid-column: 1 / -1;
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
@@ -2680,6 +2706,17 @@ tbody tr.split-bill-row {
   background: #eef5ff;
   border: 1px solid rgba(39, 77, 122, 0.16);
   border-radius: 8px;
+}
+
+.weight-total-panel div {
+  min-width: 0;
+}
+
+.weight-total-panel div.live {
+  padding: 8px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: inset 4px 0 0 #274d7a;
 }
 
 .weight-total-panel span,
@@ -2702,6 +2739,13 @@ tbody tr.split-bill-row {
   background: #fff;
   border-radius: 999px;
   font-style: normal;
+}
+
+.weight-total-panel em.warning {
+  grid-column: 1 / -1;
+  color: #842432;
+  background: #fff0f1;
+  border: 1px solid rgba(155, 44, 58, 0.2);
 }
 
 .form-grid textarea {
@@ -3093,7 +3137,7 @@ tbody tr.split-bill-row {
 
   .weight-total-panel {
     align-items: flex-start;
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .weight-total-panel em {
