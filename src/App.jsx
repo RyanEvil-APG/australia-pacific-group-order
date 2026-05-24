@@ -217,6 +217,15 @@ function audPrice(value) {
   return `A$${amount.toLocaleString("vi-VN", { minimumFractionDigits: amount % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
 }
 
+function roundProductAud(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  const rounded = Math.ceil((amount - Number.EPSILON) * 10) / 10;
+  const whole = Math.floor(rounded);
+  if (rounded - whole >= 0.9 - Number.EPSILON) return Math.ceil(rounded);
+  return Math.round(rounded * 100) / 100;
+}
+
 function kg(value) {
   return Number(value || 0).toLocaleString("vi-VN", { maximumFractionDigits: 2 });
 }
@@ -3392,7 +3401,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
       lastPreviewUrlRef.current = url;
       setDraft((current) => {
         if (String(current.productUrl || "").trim() !== url) return current;
-        const nextAud = money(data.priceAud);
+        const nextAud = roundProductAud(data.priceAud ?? data.rawPriceAud);
         const shouldApplyPrice = nextAud > 0 && (force || previousPreviewUrl !== url || money(current.aud) <= 0);
         return {
           ...current,
@@ -3403,11 +3412,12 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
           productImageSource: current.productImageSource === "manual" ? "manual" : (data.imageUrl ? "auto" : current.productImageSource)
         };
       });
-      const hasPrice = money(data.priceAud) > 0;
+      const roundedPreviewAud = roundProductAud(data.priceAud ?? data.rawPriceAud);
+      const hasPrice = roundedPreviewAud > 0;
       setPreviewStatus(data.imageUrl || hasPrice ? "done" : "error");
       setPreviewError(
         hasPrice
-          ? `Đã tự lấy giá ${audPrice(data.rawPriceAud || data.priceAud)}${data.rawPriceAud && data.priceAud !== data.rawPriceAud ? `, làm tròn thành ${audPrice(data.priceAud)}` : ""}.`
+          ? `Đã tự lấy giá ${audPrice(data.rawPriceAud || roundedPreviewAud)}${data.rawPriceAud && roundedPreviewAud !== money(data.rawPriceAud) ? `, làm tròn thành ${audPrice(roundedPreviewAud)}` : ""}.`
           : data.imageUrl
             ? "Đã lấy ảnh, nhưng site chưa trả giá rõ ràng. Có thể nhập giá tay hoặc bấm Lấy lại."
             : "Đã nhận shop/link nhưng site này không trả ảnh hoặc giá rõ ràng. Upload ảnh tay và nhập giá tay để chắc nhất."

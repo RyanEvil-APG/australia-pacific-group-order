@@ -420,11 +420,6 @@ function readJsonLdPrice(html) {
 
 function readEmbeddedPrice(html) {
   const normalized = html.replace(/\\u002F/g, "/").replace(/\\\//g, "/").replace(/&quot;/g, "\"");
-  const chemistAlgoliaPrice = normalized.match(/"key"\s*:\s*"cwr-algolia-price"[\s\S]{0,120}?"value"\s*:\s*"?(\d+(?:\.\d+)?)"?/i)?.[1];
-  if (chemistAlgoliaPrice) {
-    const cents = Number(chemistAlgoliaPrice);
-    if (Number.isFinite(cents) && cents > 0) return cents >= 100 ? cents / 100 : cents;
-  }
   const structuredPatterns = [
     /"prices"\s*:\s*\[\s*\{[\s\S]{0,2500}?"amount"\s*:\s*([0-9]+(?:\.[0-9]+)?)/i,
     /"price"\s*:\s*\{\s*"value"\s*:\s*\{\s*"amount"\s*:\s*([0-9]+(?:\.[0-9]+)?)/i,
@@ -443,6 +438,30 @@ function readEmbeddedPrice(html) {
   return visiblePrices.length ? Math.min(...visiblePrices) : null;
 }
 
+function readChemistPrice(html) {
+  const normalized = html
+    .replace(/\\u002F/g, "/")
+    .replace(/\\\//g, "/")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#x2F;/g, "/");
+  const priceBlock = normalized.match(
+    /"prices"\s*:\s*\[\s*\{[\s\S]{0,5000}?"price"\s*:\s*\{\s*"value"\s*:\s*\{\s*"amount"\s*:\s*([0-9]+(?:\.[0-9]+)?)/i
+  )?.[1];
+  const structuredPrice = priceFromValue(priceBlock);
+  if (structuredPrice !== null && structuredPrice < 10000) return structuredPrice;
+
+  const algoliaPrice =
+    normalized.match(/"key"\s*:\s*"cwr-algolia-price"[\s\S]{0,180}?"value"\s*:\s*"?(\d+(?:\.\d+)?)"?/i)?.[1] ||
+    normalized.match(/"cwr-algolia-price"[\s\S]{0,180}?"value"\s*:\s*"?(\d+(?:\.\d+)?)"?/i)?.[1] ||
+    normalized.match(/"value"\s*:\s*"?(\d+(?:\.\d+)?)"?[\s\S]{0,180}?"cwr-algolia-price"/i)?.[1];
+  if (algoliaPrice) {
+    const cents = Number(algoliaPrice);
+    if (Number.isFinite(cents) && cents > 0) return cents >= 100 ? cents / 100 : cents;
+  }
+
+  return null;
+}
+
 function readProductPrice(html) {
   const metaPrice = priceFromValue(readMeta(html, [
     "product:price:amount",
@@ -451,7 +470,7 @@ function readProductPrice(html) {
     "price",
     "sale_price"
   ]));
-  return metaPrice ?? readJsonLdPrice(html) ?? readEmbeddedPrice(html);
+  return readChemistPrice(html) ?? metaPrice ?? readJsonLdPrice(html) ?? readEmbeddedPrice(html);
 }
 
 function readSrcset(srcset = "") {
