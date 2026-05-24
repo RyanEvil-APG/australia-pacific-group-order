@@ -524,6 +524,29 @@ function orderWithBatchPricing(order, batch) {
   });
 }
 
+function orderWithBatchWorkflow(order, batch) {
+  const pricedOrder = orderWithBatchPricing(order, batch);
+  const batchStatus = normalizeBatchStatus(batch?.status);
+  const orderStatus = normalizeOrderStatus(pricedOrder.status);
+  const lockedStatuses = new Set(["cancelled", "delivered", "out_of_stock"]);
+
+  if (batchStatus === "shipping" && !lockedStatuses.has(orderStatus) && orderStatus !== "sent_vn" && orderStatus !== "received_vn") {
+    return normalizeOrder({ ...pricedOrder, status: "sent_vn", updatedAt: new Date().toISOString() });
+  }
+
+  if (batchStatus === "arrived" && !lockedStatuses.has(orderStatus) && orderStatus !== "received_vn") {
+    return normalizeOrder({
+      ...pricedOrder,
+      status: "received_vn",
+      receivedVnDate: pricedOrder.receivedVnDate || today(),
+      vnStockLocation: pricedOrder.vnStockLocation || "Kho VN",
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  return pricedOrder;
+}
+
 function flightTimelineStage(batch) {
   const cutoffDiff = dateDiffFromToday(batch.cutoff);
   const departureDiff = dateDiffFromToday(batch.departure);
@@ -1085,11 +1108,14 @@ function App() {
       const nextOrders = current.map((order) => {
         const batch = findOrderBatch(batches, order);
         if (!batchHasPricing(batch)) return order;
-        const nextOrder = orderWithBatchPricing(order, batch);
+        const nextOrder = orderWithBatchWorkflow(order, batch);
         if (
           nextOrder.batchId !== order.batchId ||
           money(nextOrder.intlShippingAud) !== money(order.intlShippingAud) ||
-          money(nextOrder.exchangeRate) !== money(order.exchangeRate)
+          money(nextOrder.exchangeRate) !== money(order.exchangeRate) ||
+          normalizeOrderStatus(nextOrder.status) !== normalizeOrderStatus(order.status) ||
+          nextOrder.receivedVnDate !== order.receivedVnDate ||
+          nextOrder.vnStockLocation !== order.vnStockLocation
         ) {
           changed = true;
         }
@@ -1478,7 +1504,7 @@ function App() {
       const exists = current.some((batch) => batch.id === nextBatch.id);
       return exists ? current.map((batch) => (batch.id === nextBatch.id ? nextBatch : batch)) : [nextBatch, ...current];
     });
-    setOrders((current) => current.map((order) => (findOrderBatch([nextBatch], order) ? orderWithBatchPricing(order, nextBatch) : order)));
+    setOrders((current) => current.map((order) => (findOrderBatch([nextBatch], order) ? orderWithBatchWorkflow(order, nextBatch) : order)));
     setModal(null);
   }
 

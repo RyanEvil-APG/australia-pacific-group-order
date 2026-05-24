@@ -1648,7 +1648,7 @@ tbody tr.split-bill-row {
 
 .workflow-board {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  grid-template-columns: repeat(3, minmax(210px, 1fr));
   gap: 12px;
   padding: 12px;
   overflow-x: auto;
@@ -1670,23 +1670,43 @@ tbody tr.split-bill-row {
 }
 
 .workflow-column.warn {
+  grid-column: 1;
+  grid-row: 1;
   background: #fff7ed;
 }
 
 .workflow-column.stockout {
+  grid-column: 2;
+  grid-row: 1;
   background: #fff4f5;
 }
 
 .workflow-column.ready {
+  grid-column: 1;
+  grid-row: 2;
   background: #eef5ff;
 }
 
 .workflow-column.flying {
+  grid-column: 2;
+  grid-row: 2;
   background: #edf9f4;
 }
 
 .workflow-column.arrived {
+  grid-column: 3;
+  grid-row: 2;
   background: #fff3f4;
+}
+
+.workflow-column.ready::before {
+  content: "Sau khi đã mua";
+  display: block;
+  margin-bottom: 2px;
+  color: #274d7a;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
 }
 
 .workflow-column-head {
@@ -3146,6 +3166,15 @@ tbody tr.split-bill-row {
     padding: 10px;
   }
 
+  .workflow-column.warn,
+  .workflow-column.stockout,
+  .workflow-column.ready,
+  .workflow-column.flying,
+  .workflow-column.arrived {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
   .workflow-column {
     min-width: 0;
   }
@@ -3327,6 +3356,33 @@ tbody tr.split-bill-row {
     width: 100%;
     max-width: 280px;
     margin: 0 auto;
+  }
+
+  .order-product-cell {
+    grid-template-columns: 76px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .order-product-thumb {
+    width: 76px;
+    height: 76px;
+  }
+
+  .workflow-card .order-product-cell,
+  .overview-buying-item .order-product-cell,
+  .flight-order-item .order-product-cell,
+  .stockout-card .order-product-cell,
+  .post-arrival-product .order-product-cell {
+    grid-template-columns: 96px minmax(0, 1fr);
+  }
+
+  .workflow-card .order-product-thumb,
+  .overview-buying-item .order-product-thumb,
+  .flight-order-item .order-product-thumb,
+  .stockout-card .order-product-thumb,
+  .post-arrival-product .order-product-thumb {
+    width: 96px;
+    height: 96px;
   }
 
   .mobile-product-focus {
