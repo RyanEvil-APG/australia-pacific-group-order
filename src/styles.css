@@ -2493,7 +2493,11 @@ tbody tr.split-bill-row {
 .product-media-preview img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+}
+
+.mobile-product-focus {
+  display: none;
 }
 
 .product-media-controls {
@@ -2566,6 +2570,22 @@ tbody tr.split-bill-row {
 .check-line input {
   width: auto;
   min-height: auto;
+}
+
+.quantity-input,
+.price-input {
+  color: #111;
+  background: #fffdf8;
+  border-color: rgba(17, 17, 17, 0.26);
+  font-size: 1.02rem;
+  font-weight: 950;
+}
+
+.synced-input {
+  color: #5e554a;
+  background: #f3eadc;
+  border-color: rgba(141, 106, 44, 0.22);
+  cursor: default;
 }
 
 .auto-summary {
@@ -3087,5 +3107,65 @@ tbody tr.split-bill-row {
 
   .login-panel {
     padding: 18px;
+  }
+}
+
+@media (max-width: 640px) {
+  .modal-backdrop {
+    align-items: start;
+    padding: 8px;
+  }
+
+  .order-modal {
+    width: 100%;
+    max-height: calc(100vh - 16px);
+    padding: 12px;
+  }
+
+  .product-media-editor {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .product-media-preview {
+    width: 100%;
+    max-width: 280px;
+    margin: 0 auto;
+  }
+
+  .mobile-product-focus {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .mobile-product-focus span {
+    display: grid;
+    gap: 4px;
+    padding: 10px;
+    color: #5e554a;
+    background: #fff;
+    border: 1px solid rgba(33, 29, 23, 0.1);
+    border-radius: 8px;
+    font-size: 0.72rem;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  .mobile-product-focus strong {
+    color: #111;
+    font-size: 1.22rem;
+    font-weight: 950;
+    text-transform: none;
+  }
+
+  .quantity-input,
+  .price-input {
+    min-height: 48px;
+    font-size: 1.18rem;
+  }
+
+  .auto-summary {
+    grid-template-columns: 1fr;
   }
 }

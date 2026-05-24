@@ -605,7 +605,7 @@ async function fetchShopifyPreview(target, signal) {
   }
 }
 
-async function readResponseTextLimited(response, limitBytes = 700_000) {
+async function readResponseTextLimited(response, limitBytes = 1_500_000) {
   const reader = response.body?.getReader?.();
   if (!reader) return response.text();
   const chunks = [];
@@ -618,6 +618,30 @@ async function readResponseTextLimited(response, limitBytes = 700_000) {
   }
   await reader.cancel().catch(() => {});
   return Buffer.concat(chunks).toString("utf8");
+}
+
+async function fetchChemistFallbackPrice(target) {
+  if (!isChemistWarehouseUrl(target)) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 9000);
+  try {
+    const response = await fetch(target, {
+      signal: controller.signal,
+      redirect: "follow",
+      headers: {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 AustraliaPacificGroupOrder/1.0",
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "accept-language": "en-AU,en;q=0.9",
+        "cache-control": "no-cache"
+      }
+    });
+    if (!response.ok) return null;
+    return readProductPrice(await readResponseTextLimited(response));
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function fetchProductPreview(rawUrl) {
@@ -664,7 +688,7 @@ async function fetchProductPreview(rawUrl) {
       ],
       target
     );
-    const rawPriceAud = readProductPrice(html) ?? shopifyPreview.rawPriceAud ?? null;
+    const rawPriceAud = readProductPrice(html) ?? shopifyPreview.rawPriceAud ?? await fetchChemistFallbackPrice(target);
     const priceAud = roundProductAud(rawPriceAud);
     return {
       ok: true,
@@ -677,14 +701,16 @@ async function fetchProductPreview(rawUrl) {
     };
   } catch (error) {
     if (chemistFallback?.imageUrl) {
+      const rawPriceAud = await fetchChemistFallbackPrice(target);
+      const priceAud = roundProductAud(rawPriceAud);
       return {
         ok: true,
         url: target.toString(),
         title: chemistFallback.title,
         siteName: chemistFallback.siteName,
         imageUrl: chemistFallback.imageUrl,
-        rawPriceAud: null,
-        priceAud: null
+        rawPriceAud,
+        priceAud
       };
     }
     throw error;
