@@ -658,21 +658,31 @@ async function readResponseTextLimited(response, limitBytes = 1_500_000) {
 
 async function fetchChemistFallbackPrice(target) {
   if (!isChemistWarehouseUrl(target)) return null;
+  const targets = [target];
+  const productId = chemistProductId(target);
+  if (productId) {
+    targets.push(new URL(`/buy/${productId}`, target.origin));
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 9000);
   try {
-    const response = await fetch(target, {
-      signal: controller.signal,
-      redirect: "follow",
-      headers: {
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 AustraliaPacificGroupOrder/1.0",
-        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "accept-language": "en-AU,en;q=0.9",
-        "cache-control": "no-cache"
-      }
-    });
-    if (!response.ok) return null;
-    return readProductPrice(await readResponseTextLimited(response));
+    for (const item of targets) {
+      const response = await fetch(item, {
+        signal: controller.signal,
+        redirect: "follow",
+        headers: {
+          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 AustraliaPacificGroupOrder/1.0",
+          accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "accept-language": "en-AU,en;q=0.9",
+          "cache-control": "no-cache",
+          pragma: "no-cache"
+        }
+      });
+      if (!response.ok) continue;
+      const price = readProductPrice(await readResponseTextLimited(response));
+      if (price !== null) return price;
+    }
+    return null;
   } catch {
     return null;
   } finally {
@@ -887,11 +897,26 @@ app.post("/api/product-preview", async (req, res) => {
 
   try {
     const preview = await fetchProductPreview(req.body?.url);
+    res.set("Cache-Control", "no-store");
     return res.json(preview);
   } catch (error) {
     return res.status(422).json({
       ok: false,
       error: "Không lấy được ảnh từ link này. Upload ảnh tay hoặc thử link sản phẩm khác.",
+      detail: error.message
+    });
+  }
+});
+
+app.get("/api/product-preview-public", async (req, res) => {
+  try {
+    const preview = await fetchProductPreview(req.query?.url);
+    res.set("Cache-Control", "no-store");
+    return res.json(preview);
+  } catch (error) {
+    return res.status(422).json({
+      ok: false,
+      error: "KhÃ´ng láº¥y Ä‘Æ°á»£c giÃ¡ tá»« link nÃ y.",
       detail: error.message
     });
   }

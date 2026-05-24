@@ -1200,6 +1200,7 @@ function App() {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
+          "Cache-Control": "no-cache",
           Authorization: `Bearer ${sessionToken}`
         },
         body: JSON.stringify({ state: payload })
@@ -1328,7 +1329,7 @@ function App() {
         body: JSON.stringify(loginForm)
       });
       if (!response.ok) throw new Error("login failed");
-      const data = await response.json();
+      let data = await response.json();
       setSessionToken(data.token);
       setCurrentAccountId(data.account.id);
       setSessionExpiresAt(Date.now() + Number(data.expiresInMs || 8 * 60 * 60 * 1000));
@@ -3857,9 +3858,22 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
         },
         body: JSON.stringify({ url })
       });
-      const data = await response.json();
+      let data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || "Không lấy được ảnh từ link này.");
+      }
+      if (roundProductAud(data.priceAud ?? data.rawPriceAud) <= 0 && data.imageUrl) {
+        try {
+          const fallbackResponse = await fetch(`/api/product-preview-public?url=${encodeURIComponent(url)}&t=${Date.now()}`, {
+            headers: { "Cache-Control": "no-cache" }
+          });
+          const fallbackData = await fallbackResponse.json();
+          if (fallbackResponse.ok && roundProductAud(fallbackData.priceAud ?? fallbackData.rawPriceAud) > 0) {
+            data = fallbackData;
+          }
+        } catch {
+          // Keep the original preview data; manual price entry remains available.
+        }
       }
       const previousPreviewUrl = lastPreviewUrlRef.current;
       lastPreviewUrlRef.current = url;
