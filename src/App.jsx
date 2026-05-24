@@ -3866,7 +3866,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
       setDraft((current) => {
         if (String(current.productUrl || "").trim() !== url) return current;
         const nextAud = roundProductAud(data.priceAud ?? data.rawPriceAud);
-        const shouldApplyPrice = nextAud > 0 && (force || previousPreviewUrl !== url || money(current.aud) <= 0);
+        const shouldApplyPrice = nextAud > 0;
         return {
           ...current,
           product: current.product || data.title || current.product,

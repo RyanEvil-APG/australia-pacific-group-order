@@ -418,6 +418,39 @@ function readJsonLdPrice(html) {
   return null;
 }
 
+function readNextData(html) {
+  const match = html.match(/<script\b[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+  if (!match) return null;
+  try {
+    return JSON.parse(decodeHtml(match[1]));
+  } catch {
+    return null;
+  }
+}
+
+function readChemistNextDataPrice(html) {
+  const data = readNextData(html);
+  const prices = data?.props?.pageProps?.product?.prices;
+  if (Array.isArray(prices)) {
+    for (const item of prices) {
+      const parsed = priceFromValue(item?.price?.value?.amount ?? item?.price?.amount ?? item?.amount);
+      if (parsed !== null && parsed < 10000) return parsed;
+    }
+  }
+
+  const variants = data?.props?.pageProps?.product?.product?.variants;
+  if (Array.isArray(variants)) {
+    for (const variant of variants) {
+      const attributes = Array.isArray(variant?.attributes) ? variant.attributes : [];
+      const algoliaPrice = attributes.find((attribute) => attribute?.key === "cwr-algolia-price")?.value;
+      const parsed = priceFromValue(algoliaPrice);
+      if (parsed !== null && parsed > 0) return parsed >= 100 ? parsed / 100 : parsed;
+    }
+  }
+
+  return null;
+}
+
 function readEmbeddedPrice(html) {
   const normalized = html.replace(/\\u002F/g, "/").replace(/\\\//g, "/").replace(/&quot;/g, "\"");
   const structuredPatterns = [
@@ -439,6 +472,9 @@ function readEmbeddedPrice(html) {
 }
 
 function readChemistPrice(html) {
+  const nextDataPrice = readChemistNextDataPrice(html);
+  if (nextDataPrice !== null) return nextDataPrice;
+
   const normalized = html
     .replace(/\\u002F/g, "/")
     .replace(/\\\//g, "/")
