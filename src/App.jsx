@@ -95,7 +95,7 @@ const emptyOrder = {
   customerWantsNextBatch: false,
   supervisorId: "ryan",
   assigneeId: "staff-vn",
-  buyerId: "staff-vn",
+  buyerId: "ryan",
   aud: 0,
   shippingAud: 0,
   intlShippingAud: 0,
@@ -551,6 +551,29 @@ function roleLabel(role) {
     staff: "Staff"
   };
   return labels[role] ?? role;
+}
+
+function accountMatchText(account) {
+  return `${account?.id || ""} ${account?.username || ""} ${account?.displayName || ""} ${account?.initials || ""}`
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function findPreferredAccountId(accounts, candidates, fallbackId) {
+  const activeAccounts = accounts.filter((account) => account.active);
+  const normalizedCandidates = candidates.map((candidate) =>
+    String(candidate || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+  );
+  return (
+    activeAccounts.find((account) => normalizedCandidates.some((candidate) => accountMatchText(account).includes(candidate)))?.id ||
+    accounts.find((account) => account.id === fallbackId)?.id ||
+    activeAccounts[0]?.id ||
+    fallbackId
+  );
 }
 
 function orderUnitWeightKg(order) {
@@ -1193,6 +1216,14 @@ function App() {
     return batches.find((batch) => batch.id === id);
   }
 
+  function defaultOrderPeople() {
+    return {
+      supervisorId: findPreferredAccountId(accounts, ["hà hồng", "ha hong", "hong"], "ryan"),
+      assigneeId: findPreferredAccountId(accounts, ["thanh anh", "anh thanh"], "staff-vn"),
+      buyerId: findPreferredAccountId(accounts, ["ryan", "ryan vu"], "ryan")
+    };
+  }
+
   function upsertCustomerFromOrder(order) {
     const name = String(order.customer || "").trim();
     if (!name) return;
@@ -1260,13 +1291,14 @@ function App() {
     const autoBatch = order ? null : autoBatchForOrder(batches, defaultDate);
     const defaultBatchId = order?.batchId ?? autoBatch?.id ?? "";
     const defaultBatch = findOrderBatch(batches, { batchId: defaultBatchId });
+    const peopleDefaults = defaultOrderPeople();
     setDraft({
       ...emptyOrder,
       id: order?.id ?? generateOrderCode({ orderDate: defaultDate, batchId: defaultBatchId }, defaultBatch, orders),
       orderDate: defaultDate,
-      supervisorId: order?.supervisorId ?? "ryan",
-      assigneeId: order?.assigneeId ?? "staff-vn",
-      buyerId: order?.buyerId ?? "staff-vn",
+      supervisorId: order?.supervisorId ?? peopleDefaults.supervisorId,
+      assigneeId: order?.assigneeId ?? peopleDefaults.assigneeId,
+      buyerId: order?.buyerId ?? peopleDefaults.buyerId,
       ...normalizeOrder(order),
       unitWeightKg: order ? orderUnitWeightKg(order) : 0,
       weightKg: order ? orderTotalWeightKg(order) : 0,
@@ -1501,7 +1533,15 @@ function App() {
   }
 
   function openTask(task = null) {
-    setDraft({ ...emptyTask, id: task?.id ?? makeId("TASK"), dueDate: task?.dueDate ?? today(), ...task });
+    const peopleDefaults = defaultOrderPeople();
+    setDraft({
+      ...emptyTask,
+      id: task?.id ?? makeId("TASK"),
+      dueDate: task?.dueDate ?? today(),
+      supervisorId: task?.supervisorId ?? peopleDefaults.supervisorId,
+      assigneeId: task?.assigneeId ?? peopleDefaults.assigneeId,
+      ...task
+    });
     setModal("task");
   }
 

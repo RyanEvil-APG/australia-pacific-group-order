@@ -85,7 +85,7 @@ function normalizeOrderStatus(status) {
     shipping: "sent_vn",
     arrived_vn: "received_vn"
   };
-  const allowedStatuses = new Set(["waiting_buy", "purchased", "sent_vn", "received_vn", "delivered", "cancelled"]);
+  const allowedStatuses = new Set(["waiting_buy", "out_of_stock", "purchased", "sent_vn", "received_vn", "delivered", "cancelled"]);
   const nextStatus = legacyMap[status] ?? status;
   return allowedStatuses.has(nextStatus) ? nextStatus : "waiting_buy";
 }
