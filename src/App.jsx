@@ -513,15 +513,11 @@ function flightTimelineStage(batch) {
     ((departureDiff === null || departureDiff <= 0) && arrivalDiff !== null && arrivalDiff >= 0 && batch.status !== "arrived");
 
   if (isInFlight) {
-    return { label: "Đang bay", tone: "flying", focusDate: batch.arrival || batch.departure, sortDate: batch.arrival || batch.departure || batch.cutoff || "" };
-  }
-
-  if (arrivalDiff !== null && arrivalDiff >= 0 && arrivalDiff <= 7) {
-    return { label: "Sắp về VN", tone: "arriving", focusDate: batch.arrival, sortDate: batch.arrival };
+    return { label: "Đang bay", tone: "flying", focusDate: batch.departure || batch.arrival, sortDate: batch.departure || batch.arrival || batch.cutoff || "" };
   }
 
   if (departureDiff !== null && departureDiff >= 0 && departureDiff <= 7) {
-    return { label: "Chuẩn bị bay", tone: "ready", focusDate: batch.departure, sortDate: batch.departure };
+    return { label: "Sắp bay", tone: "ready", focusDate: batch.departure, sortDate: batch.departure };
   }
 
   if (cutoffDiff !== null && cutoffDiff >= 0 && cutoffDiff <= 5 && ["open", "closed"].includes(batch.status)) {
@@ -784,7 +780,7 @@ function batchMonthDay(batch) {
 }
 
 function batchCodeDate(batch) {
-  return batch?.arrival || batch?.departure || "";
+  return batch?.departure || batch?.arrival || "";
 }
 
 function flightSequenceMap(batches) {
@@ -2043,7 +2039,7 @@ function OverviewView(props) {
                 </div>
                 <div className="flight-card-date">
                   <span>{dateLabel(stage.focusDate)}</span>
-                  <strong>{stage.focusDate || "-"}</strong>
+                  <strong>Bay {stage.focusDate || "-"}</strong>
                 </div>
                 <div className="flight-card-meta">
                   <span>{batchOrders.length} đơn</span>
@@ -4037,7 +4033,7 @@ function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderSt
               <input value={draft.code} onChange={(event) => setDraft({ ...draft, code: event.target.value, autoCode: false })} />
               <button type="button" onClick={() => setDraft({ ...draft, code: generateBatchCode(draft, batches), autoCode: true })}>Auto</button>
             </div>
-            <span className="field-hint">Chọn Ngày hàng về VN để app tự tạo dạng 2026-VN01-0528 Flight: VN01 là chuyến về VN thứ 1 trong năm, 0528 là ngày về. Nếu chưa nhập ngày về, app tạm dùng Ngày bay.</span>
+            <span className="field-hint">Chọn Ngày bay để app tự tạo dạng 2026-VN01-0524 Flight: VN01 là chuyến bay thứ 1 trong năm, 0524 là ngày bay từ Úc. Ngày về VN chỉ dùng để theo dõi hàng về.</span>
           </Field>
           <Field label="Tuyến"><input value={draft.route} onChange={(event) => setDraft({ ...draft, route: event.target.value })} /></Field>
           <Field label="Cutoff"><input type="date" value={draft.cutoff} onChange={(event) => updateFlightDate("cutoff", event.target.value)} /></Field>
