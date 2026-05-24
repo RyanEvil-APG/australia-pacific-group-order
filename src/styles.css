@@ -1243,12 +1243,114 @@ tbody tr.split-bill-row {
 }
 
 .customer-tier-grid,
+.product-insight-grid,
+.product-rank-grid,
 .batch-management-grid,
 .task-board-grid,
 .status-board {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
+}
+
+.product-insight-grid {
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+}
+
+.product-rank-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.product-catalog-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(180px, 0.24fr);
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid rgba(33, 29, 23, 0.08);
+}
+
+.product-catalog-toolbar select {
+  min-height: 40px;
+  padding: 0 10px;
+  color: #27231d;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.12);
+  border-radius: 8px;
+  font-weight: 900;
+}
+
+.product-catalog-table th:nth-child(1),
+.product-catalog-table td:nth-child(1) {
+  width: 34%;
+}
+
+.product-catalog-table th:nth-child(2),
+.product-catalog-table td:nth-child(2) {
+  width: 16%;
+}
+
+.product-catalog-name .order-product-thumb,
+.product-rank-list .order-product-thumb {
+  width: 48px;
+  height: 48px;
+}
+
+.product-rank-list {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.product-rank-list button {
+  display: grid;
+  grid-template-columns: 28px 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 64px;
+  padding: 8px;
+  color: #211d17;
+  background: #fffdf8;
+  border: 1px solid rgba(33, 29, 23, 0.09);
+  border-radius: 8px;
+  text-align: left;
+}
+
+.product-rank-list b {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: #274d7a;
+  background: #e9f2ff;
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+
+.product-rank-list strong,
+.product-rank-list em {
+  display: block;
+}
+
+.product-rank-list em,
+.product-catalog-hit {
+  margin-top: 4px;
+  color: #746c61;
+  font-size: 0.76rem;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.product-catalog-hit {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  padding: 6px 8px;
+  color: #0b5c45;
+  background: #e9f8f2;
+  border: 1px solid rgba(17, 102, 79, 0.14);
+  border-radius: 8px;
 }
 
 .tier-card,
@@ -3516,5 +3618,22 @@ tbody tr.split-bill-row {
 
   .batch-weight-panel {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 780px) {
+  .product-rank-grid,
+  .product-catalog-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .product-rank-list button {
+    grid-template-columns: 24px 56px minmax(0, 1fr);
+  }
+
+  .product-catalog-name .order-product-thumb,
+  .product-rank-list .order-product-thumb {
+    width: 56px;
+    height: 56px;
   }
 }

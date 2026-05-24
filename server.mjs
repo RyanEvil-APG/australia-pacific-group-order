@@ -451,6 +451,42 @@ function readChemistNextDataPrice(html) {
   return null;
 }
 
+function weightKgFromGrams(value) {
+  const grams = Number(value);
+  if (!Number.isFinite(grams) || grams <= 0 || grams > 50000) return null;
+  return Math.round((grams / 1000) * 1000) / 1000;
+}
+
+function readChemistNextDataWeightKg(html) {
+  const data = readNextData(html);
+  const queue = data ? [data] : [];
+  const seen = new Set();
+  while (queue.length) {
+    const item = queue.shift();
+    if (!item || typeof item !== "object" || seen.has(item)) continue;
+    seen.add(item);
+
+    const key = String(item.key || "").toLowerCase();
+    const name = String(item.name || item.label || "").toLowerCase();
+    if (key === "cwr-weight" || /weight\s*\(g\)|weight.*gram|grams?/i.test(name)) {
+      const parsed = weightKgFromGrams(item.value ?? item.amount);
+      if (parsed !== null) return parsed;
+    }
+
+    for (const value of Object.values(item)) {
+      if (Array.isArray(value)) queue.push(...value);
+      else if (value && typeof value === "object") queue.push(value);
+    }
+  }
+
+  const normalized = html.replace(/\\u002F/g, "/").replace(/\\\//g, "/").replace(/&quot;/g, "\"");
+  const cwrWeight =
+    normalized.match(/"key"\s*:\s*"cwr-weight"[\s\S]{0,240}?"value"\s*:\s*"?([0-9]+(?:\.[0-9]+)?)"?/i)?.[1] ||
+    normalized.match(/"name"\s*:\s*"Weight\s*\(g\)"[\s\S]{0,240}?"value"\s*:\s*"?([0-9]+(?:\.[0-9]+)?)"?/i)?.[1] ||
+    normalized.match(/"value"\s*:\s*"?([0-9]+(?:\.[0-9]+)?)"?[\s\S]{0,240}?"name"\s*:\s*"Weight\s*\(g\)"/i)?.[1];
+  return weightKgFromGrams(cwrWeight);
+}
+
 function readEmbeddedPrice(html) {
   const normalized = html.replace(/\\u002F/g, "/").replace(/\\\//g, "/").replace(/&quot;/g, "\"");
   const structuredPatterns = [
@@ -507,6 +543,10 @@ function readProductPrice(html) {
     "sale_price"
   ]));
   return readChemistPrice(html) ?? metaPrice ?? readJsonLdPrice(html) ?? readEmbeddedPrice(html);
+}
+
+function readProductWeightKg(html) {
+  return readChemistNextDataWeightKg(html);
 }
 
 function readSrcset(srcset = "") {
@@ -766,6 +806,7 @@ async function fetchProductPreview(rawUrl) {
       target
     );
     const rawPriceAud = readProductPrice(html) ?? shopifyPreview.rawPriceAud ?? await fetchChemistFallbackPrice(target);
+    const unitWeightKg = readProductWeightKg(html);
     const priceAud = roundProductAud(rawPriceAud);
     return {
       ok: true,
@@ -774,7 +815,8 @@ async function fetchProductPreview(rawUrl) {
       siteName: siteName || chemistFallback?.siteName || target.hostname.replace(/^www\./, ""),
       imageUrl,
       rawPriceAud,
-      priceAud
+      priceAud,
+      unitWeightKg
     };
   } catch (error) {
     if (chemistFallback?.imageUrl) {
@@ -787,7 +829,8 @@ async function fetchProductPreview(rawUrl) {
         siteName: chemistFallback.siteName,
         imageUrl: chemistFallback.imageUrl,
         rawPriceAud,
-        priceAud
+        priceAud,
+        unitWeightKg: null
       };
     }
     throw error;

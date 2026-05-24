@@ -1,11 +1,13 @@
 import React from "react";
 import {
   Bell,
+  BarChart3,
   Boxes,
   CalendarDays,
   CheckCircle2,
   ClipboardList,
   CreditCard,
+  Database,
   Edit3,
   Filter,
   Gem,
@@ -176,6 +178,7 @@ const navItems = [
   { id: "overview", label: "Tổng quan", icon: LineChart },
   { id: "orders", label: "Đơn hàng", icon: ClipboardList },
   { id: "buying", label: "Mua hàng & Packing", icon: PackageCheck },
+  { id: "products", label: "Dữ liệu sản phẩm", icon: Database },
   { id: "stockouts", label: "Hàng hết", icon: TriangleAlert },
   { id: "flights", label: "Chuyến bay", icon: Plane },
   { id: "after-arrival", label: "Hàng đã về", icon: Truck },
@@ -748,6 +751,100 @@ function batchFinanceSummary(batch, orders) {
   };
 }
 
+function normalizeProductText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function productUrlIdentity(rawUrl) {
+  const value = String(rawUrl || "").trim();
+  if (!looksLikeProductUrl(value)) return "";
+  try {
+    const url = new URL(value.startsWith("www.") ? `https://${value}` : value);
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    const chemistId = host.includes("chemistwarehouse.com.au") ? url.pathname.match(/\/buy\/(\d+)/i)?.[1] : "";
+    if (chemistId) return `chemist:${chemistId}`;
+    return `url:${host}${url.pathname.replace(/\/+$/, "").toLowerCase()}`;
+  } catch {
+    return "";
+  }
+}
+
+function productIdentityKey(item) {
+  const urlKey = productUrlIdentity(item?.productUrl || item?.source);
+  if (urlKey) return urlKey;
+  const nameKey = normalizeProductText(item?.product || item?.name);
+  const sourceKey = normalizeProductText(item?.source || item?.siteName);
+  return nameKey ? `name:${sourceKey}:${nameKey}` : "";
+}
+
+function mergeProductCatalogItem(existing, order, batch, orders) {
+  const finance = orderFinanceForBatch(order, batch, orders);
+  const quantity = Math.max(1, money(order.quantity) || finance.quantity || 1);
+  const status = normalizeOrderStatus(order.status);
+  const isSoldSignal = !["cancelled", "out_of_stock"].includes(status);
+  const orderTime = orderCreatedTime(order) || dateTime(order.orderDate) || 0;
+  const existingTime = existing?.lastOrderTime || 0;
+  const next = {
+    ...(existing || {}),
+    key: existing?.key || productIdentityKey(order),
+    product: order.product || existing?.product || "Chưa nhập tên sản phẩm",
+    source: order.source || existing?.source || "",
+    productUrl: order.productUrl || existing?.productUrl || "",
+    productImageUrl: order.productImageUrl || existing?.productImageUrl || "",
+    productImageSource: order.productImageSource || existing?.productImageSource || "",
+    unitWeightKg: money(order.unitWeightKg) > 0 ? money(order.unitWeightKg) : money(existing?.unitWeightKg),
+    aud: money(order.aud) > 0 ? money(order.aud) : money(existing?.aud),
+    ordersCount: (existing?.ordersCount || 0) + 1,
+    soldOrdersCount: (existing?.soldOrdersCount || 0) + (isSoldSignal ? 1 : 0),
+    quantitySold: (existing?.quantitySold || 0) + (isSoldSignal ? quantity : 0),
+    revenueVnd: (existing?.revenueVnd || 0) + (isSoldSignal ? finance.totalThuVnd : 0),
+    totalWeightKg: (existing?.totalWeightKg || 0) + (isSoldSignal ? orderTotalWeightKg(order) : 0),
+    missingWeightCount: (existing?.missingWeightCount || 0) + (money(order.unitWeightKg) <= 0 ? 1 : 0),
+    lastOrderDate: orderTime >= existingTime ? (order.orderDate || existing?.lastOrderDate || "") : existing?.lastOrderDate,
+    lastOrderTime: Math.max(existingTime, orderTime),
+    lastOrderId: orderTime >= existingTime ? order.id : existing?.lastOrderId,
+    sampleOrder: orderTime >= existingTime ? order : existing?.sampleOrder
+  };
+
+  if (orderTime >= existingTime) {
+    next.product = order.product || next.product;
+    next.source = order.source || next.source;
+    next.productUrl = order.productUrl || next.productUrl;
+    next.productImageUrl = order.productImageUrl || next.productImageUrl;
+    next.productImageSource = order.productImageSource || next.productImageSource;
+    if (money(order.aud) > 0) next.aud = money(order.aud);
+    if (money(order.unitWeightKg) > 0) next.unitWeightKg = money(order.unitWeightKg);
+  }
+
+  return next;
+}
+
+function buildProductCatalogFromOrders(orders, batches) {
+  const catalog = new Map();
+  normalizeOrders(orders).forEach((order) => {
+    const key = productIdentityKey(order);
+    if (!key) return;
+    const batch = findOrderBatch(batches, order);
+    catalog.set(key, mergeProductCatalogItem(catalog.get(key), order, batch, orders));
+  });
+  return [...catalog.values()].sort((a, b) => {
+    const quantityDiff = money(b.quantitySold) - money(a.quantitySold);
+    if (quantityDiff !== 0) return quantityDiff;
+    return (b.lastOrderTime || 0) - (a.lastOrderTime || 0);
+  });
+}
+
+function findProductCatalogMatch(catalog, item) {
+  const key = productIdentityKey(item);
+  if (!key) return null;
+  return catalog.find((product) => product.key === key) || null;
+}
+
 function readStoredState(key, fallback, normalize) {
   if (typeof window === "undefined") return fallback;
   try {
@@ -1274,6 +1371,8 @@ function App() {
       { revenue: 0, deposit: 0, remaining: 0, cost: 0, extraFees: 0, profit: 0 }
     );
   }, [orders, batches]);
+
+  const productCatalog = React.useMemo(() => buildProductCatalogFromOrders(orders, batches), [orders, batches]);
 
   function getAccount(id) {
     return accounts.find((account) => account.id === id) ?? accounts[0];
@@ -1840,6 +1939,7 @@ function App() {
           />
         )}
 
+        {activeView === "products" && <ProductsView productCatalog={productCatalog} openOrder={openOrder} />}
         {activeView === "customers" && <CustomersView customers={customers} orders={orders} openCustomer={openCustomer} openOrder={openOrder} />}
         {activeView === "stock" && <StockView inventory={inventory} orders={orders} batches={batches} openStock={openStock} openOrder={openOrder} />}
         {activeView === "flights" && (
@@ -1888,6 +1988,7 @@ function App() {
           accounts={accounts}
           customers={customers}
           orders={orders}
+          productCatalog={productCatalog}
           sessionToken={sessionToken}
           canEditOrder={canEditOrder}
           save={saveOrder}
@@ -2403,6 +2504,148 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit, emptyT
       </table>
       {orders.length > rowLimit && <EmptyState title={`Đang hiện ${rowLimit}/${orders.length} đơn`} body="Dùng tìm kiếm, lọc tình trạng hoặc lọc thời gian để mở đúng nhóm đơn cần xử lý nhanh hơn." />}
       {!orders.length && <EmptyState title={emptyTitle} body={emptyBody} />}
+    </div>
+  );
+}
+
+function ProductsView({ productCatalog, openOrder }) {
+  const [productQuery, setProductQuery] = React.useState("");
+  const [productFilter, setProductFilter] = React.useState("all");
+  const normalizedQuery = normalizeProductText(productQuery);
+  const filteredProducts = productCatalog.filter((product) => {
+    const text = normalizeProductText(`${product.product} ${product.source} ${product.productUrl}`);
+    const matchesQuery = !normalizedQuery || text.includes(normalizedQuery);
+    const missingWeight = money(product.unitWeightKg) <= 0;
+    const matchesFilter =
+      productFilter === "all" ||
+      (productFilter === "missing-weight" && missingWeight) ||
+      (productFilter === "has-weight" && !missingWeight);
+    return matchesQuery && matchesFilter;
+  });
+  const topProducts = productCatalog.filter((product) => money(product.quantitySold) > 0).slice(0, 4);
+  const lowProducts = [...productCatalog]
+    .filter((product) => money(product.quantitySold) > 0)
+    .sort((a, b) => money(a.quantitySold) - money(b.quantitySold) || (b.lastOrderTime || 0) - (a.lastOrderTime || 0))
+    .slice(0, 4);
+  const missingWeightCount = productCatalog.filter((product) => money(product.unitWeightKg) <= 0).length;
+  const totalQuantity = productCatalog.reduce((sum, product) => sum + money(product.quantitySold), 0);
+
+  return (
+    <div className="screen-stack">
+      <div className="panel-title standalone">
+        <div>
+          <span className="eyebrow">Product intelligence</span>
+          <h2>Dữ liệu sản phẩm</h2>
+        </div>
+      </div>
+
+      <div className="product-insight-grid">
+        <MetricCard icon={Database} label="Sản phẩm đã lưu" value={productCatalog.length} />
+        <MetricCard icon={PackageCheck} label="Tổng số lượng đã bán" value={formatter.format(totalQuantity)} />
+        <MetricCard icon={TriangleAlert} label="Sản phẩm thiếu kg" value={missingWeightCount} tone={missingWeightCount ? "warning" : "success"} />
+        <MetricCard icon={BarChart3} label="Bán chạy nhất" value={topProducts[0]?.product || "-"} tone="success" />
+      </div>
+
+      <div className="product-rank-grid">
+        <ProductRankCard title="Bán nhiều" products={topProducts} openOrder={openOrder} />
+        <ProductRankCard title="Bán ít" products={lowProducts} openOrder={openOrder} />
+      </div>
+
+      <div className="panel">
+        <div className="product-catalog-toolbar">
+          <div className="search-box">
+            <Search size={17} />
+            <input value={productQuery} onChange={(event) => setProductQuery(event.target.value)} placeholder="Tìm tên sản phẩm, shop, link..." />
+          </div>
+          <select value={productFilter} onChange={(event) => setProductFilter(event.target.value)}>
+            <option value="all">Tất cả sản phẩm</option>
+            <option value="missing-weight">Thiếu kg cần bổ sung</option>
+            <option value="has-weight">Đã có kg/sp</option>
+          </select>
+        </div>
+        <div className="table-wrap">
+          <table className="product-catalog-table">
+            <thead>
+              <tr>
+                <th>Sản phẩm</th>
+                <th>Kg / giá gần nhất</th>
+                <th>Bán được</th>
+                <th>Doanh số</th>
+                <th>Lần mua gần nhất</th>
+                <th>Tình trạng</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredProducts.map((product) => (
+                <tr key={product.key} onClick={() => product.sampleOrder && openOrder(product.sampleOrder)}>
+                  <td data-label="Sản phẩm">
+                    <div className="order-product-cell product-catalog-name">
+                      <div className="order-product-thumb"><ProductThumbImage item={product} /></div>
+                      <div>
+                        <strong>{product.product}</strong>
+                        <span>{product.source || "Chưa có shop"}</span>
+                        {product.productUrl && <span>{product.productUrl}</span>}
+                      </div>
+                    </div>
+                  </td>
+                  <td data-label="Kg / giá">
+                    <strong>{money(product.unitWeightKg) > 0 ? `${kg(product.unitWeightKg)}kg/sp` : "Thiếu kg"}</strong>
+                    <span>{money(product.aud) > 0 ? audPrice(product.aud) : "Chưa có giá AUD"}</span>
+                  </td>
+                  <td data-label="Bán được">
+                    <strong>{formatter.format(product.quantitySold || 0)} sản phẩm</strong>
+                    <span>{product.soldOrdersCount || 0} đơn</span>
+                  </td>
+                  <td data-label="Doanh số"><strong>{vnd(product.revenueVnd)}</strong></td>
+                  <td data-label="Gần nhất">
+                    <strong>{product.lastOrderDate || "-"}</strong>
+                    <span>{product.lastOrderId || ""}</span>
+                  </td>
+                  <td data-label="Tình trạng">
+                    {money(product.unitWeightKg) > 0 ? (
+                      <span className="status-chip received_vn">Đã có kg</span>
+                    ) : (
+                      <span className="status-chip out_of_stock">Cần tìm kg</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!filteredProducts.length && (
+            <EmptyState
+              title="Chưa có dữ liệu sản phẩm phù hợp"
+              body="Khi lưu đơn thật, app sẽ tự gom sản phẩm theo link/tên. Sản phẩm trùng sẽ tự dùng lại kg, ảnh và giá AUD gần nhất."
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProductRankCard({ title, products, openOrder }) {
+  return (
+    <div className="panel product-rank-card">
+      <div className="panel-title">
+        <div>
+          <span className="eyebrow">Product rank</span>
+          <h2>{title}</h2>
+        </div>
+      </div>
+      <div className="product-rank-list">
+        {products.map((product, index) => (
+          <button type="button" key={`${title}-${product.key}`} onClick={() => product.sampleOrder && openOrder(product.sampleOrder)}>
+            <b>{index + 1}</b>
+            <div className="order-product-thumb"><ProductThumbImage item={product} /></div>
+            <span>
+              <strong>{product.product}</strong>
+              <em>{formatter.format(product.quantitySold || 0)} sản phẩm · {money(product.unitWeightKg) > 0 ? `${kg(product.unitWeightKg)}kg/sp` : "thiếu kg"}</em>
+            </span>
+          </button>
+        ))}
+        {!products.length && <EmptyState title="Chưa có dữ liệu" body="Sản phẩm sẽ hiện sau khi có đơn đã lưu." />}
+      </div>
     </div>
   );
 }
@@ -3816,7 +4059,7 @@ function Field({ label, children, wide }) {
   );
 }
 
-function OrderModal({ draft, setDraft, batches, accounts, customers, orders, sessionToken, canEditOrder, save, remove, close }) {
+function OrderModal({ draft, setDraft, batches, accounts, customers, orders, productCatalog, sessionToken, canEditOrder, save, remove, close }) {
   const canEdit = !canEditOrder || canEditOrder(draft);
   const selectedBatch = batches.find((batch) => batch.id === draft.batchId);
   const financeOrder = { ...draft, id: draft.id || "__draft_order__" };
@@ -3829,6 +4072,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
   const [previewStatus, setPreviewStatus] = React.useState("idle");
   const [previewError, setPreviewError] = React.useState("");
   const lastPreviewUrlRef = React.useRef("");
+  const catalogMatch = findProductCatalogMatch(productCatalog, draft);
   const generateCurrentOrderCode = () => {
     setDraft({
       ...draft,
@@ -3843,6 +4087,28 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
       id: draft.id ? draft.id : generateOrderCode({ ...draft, batchId: suggestedBatch.id }, suggestedBatch, orders)
     });
   };
+
+  function productCatalogPatch(current, item, options = {}) {
+    const match = findProductCatalogMatch(productCatalog, item);
+    if (!match) return { match: null, patch: {} };
+    const quantity = Math.max(1, Number(current.quantity || 1));
+    const sourceWeight = money(options.unitWeightKg) > 0 ? money(options.unitWeightKg) : money(match.unitWeightKg);
+    const sourceAud = money(options.aud) > 0 ? money(options.aud) : money(match.aud);
+    const patch = {
+      product: current.product || options.title || match.product || current.product,
+      source: current.source || options.siteName || match.source || current.source
+    };
+    if (sourceAud > 0 && (money(current.aud) <= 0 || options.forcePrice)) patch.aud = sourceAud;
+    if (sourceWeight > 0 && (money(current.unitWeightKg) <= 0 || options.forceWeight)) {
+      patch.unitWeightKg = sourceWeight;
+      patch.weightKg = sourceWeight * quantity;
+    }
+    if (current.productImageSource !== "manual" && !current.productImageUrl && match.productImageUrl) {
+      patch.productImageUrl = match.productImageUrl;
+      patch.productImageSource = match.productImageSource || "auto";
+    }
+    return { match, patch };
+  }
 
   async function fetchProductPreview(urlValue = draft.productUrl, force = false) {
     const url = String(urlValue || "").trim();
@@ -3879,18 +4145,27 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
       lastPreviewUrlRef.current = url;
       setDraft((current) => {
         if (String(current.productUrl || "").trim() !== url) return current;
+        const matched = findProductCatalogMatch(productCatalog, { ...current, productUrl: url, product: data.title || current.product });
         const nextAud = roundProductAud(data.priceAud ?? data.rawPriceAud);
-        const shouldApplyPrice = nextAud > 0;
+        const catalogAud = money(matched?.aud);
+        const nextUnitWeight = money(data.unitWeightKg) || money(matched?.unitWeightKg);
+        const shouldApplyPrice = nextAud > 0 || (catalogAud > 0 && money(current.aud) <= 0);
+        const shouldApplyWeight = nextUnitWeight > 0 && (force || money(current.unitWeightKg) <= 0 || previousPreviewUrl !== url);
+        const quantity = Math.max(1, Number(current.quantity || 1));
         return {
           ...current,
-          product: current.product || data.title || current.product,
-          source: current.source || data.siteName || current.source,
-          aud: shouldApplyPrice ? nextAud : current.aud,
+          product: current.product || data.title || matched?.product || current.product,
+          source: current.source || data.siteName || matched?.source || current.source,
+          aud: shouldApplyPrice ? (nextAud || catalogAud) : current.aud,
+          unitWeightKg: shouldApplyWeight ? nextUnitWeight : current.unitWeightKg,
+          weightKg: shouldApplyWeight ? nextUnitWeight * quantity : current.weightKg,
           productImageUrl: current.productImageSource === "manual" ? current.productImageUrl : (data.imageUrl || current.productImageUrl),
           productImageSource: current.productImageSource === "manual" ? "manual" : (data.imageUrl ? "auto" : current.productImageSource)
         };
       });
       const roundedPreviewAud = roundProductAud(data.priceAud ?? data.rawPriceAud);
+      const matchedProduct = findProductCatalogMatch(productCatalog, { productUrl: url, product: data.title || "" });
+      const previewWeightKg = money(data.unitWeightKg) || money(matchedProduct?.unitWeightKg);
       const hasPrice = roundedPreviewAud > 0;
       setPreviewStatus(data.imageUrl || hasPrice ? "done" : "error");
       setPreviewError(
@@ -3900,22 +4175,28 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
             ? "Đã lấy ảnh, nhưng site chưa trả giá rõ ràng. Có thể nhập giá tay hoặc bấm Lấy lại."
             : "Đã nhận shop/link nhưng site này không trả ảnh hoặc giá rõ ràng. Upload ảnh tay và nhập giá tay để chắc nhất."
       );
+      if (previewWeightKg > 0) {
+        setPreviewError((current) => current.includes("Kg/sp") ? current : `${current} Kg/sp ${kg(previewWeightKg)}kg.`);
+      }
     } catch (error) {
       const chemistFallback = chemistPreviewFromUrl(url);
-      if (chemistFallback?.imageUrl) {
+      const matched = findProductCatalogMatch(productCatalog, { productUrl: url, product: chemistFallback?.title || "" });
+      if (chemistFallback?.imageUrl || matched) {
         lastPreviewUrlRef.current = url;
         setDraft((current) => {
           if (String(current.productUrl || "").trim() !== url) return current;
+          const { patch } = productCatalogPatch(current, { ...current, productUrl: url, product: chemistFallback?.title || current.product });
           return {
             ...current,
-            product: current.product || chemistFallback.title || current.product,
-            source: current.source || chemistFallback.siteName,
-            productImageUrl: current.productImageSource === "manual" ? current.productImageUrl : chemistFallback.imageUrl,
-            productImageSource: current.productImageSource === "manual" ? "manual" : "auto"
+            ...patch,
+            product: current.product || chemistFallback?.title || patch.product || current.product,
+            source: current.source || chemistFallback?.siteName || patch.source || current.source,
+            productImageUrl: current.productImageSource === "manual" ? current.productImageUrl : (chemistFallback?.imageUrl || patch.productImageUrl || current.productImageUrl),
+            productImageSource: current.productImageSource === "manual" ? "manual" : (chemistFallback?.imageUrl || patch.productImageUrl ? "auto" : current.productImageSource)
           };
         });
         setPreviewStatus("done");
-        setPreviewError("");
+        setPreviewError(matched ? `Đã dùng lại dữ liệu sản phẩm đã lưu: ${money(matched.unitWeightKg) > 0 ? `${kg(matched.unitWeightKg)}kg/sp` : "chưa có kg"}${money(matched.aud) > 0 ? `, ${audPrice(matched.aud)}` : ""}.` : "");
         return;
       }
       setPreviewStatus("error");
@@ -3936,7 +4217,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
     if (!url || !looksLikeProductUrl(url)) return undefined;
     const timeout = window.setTimeout(() => fetchProductPreview(url, false), 450);
     return () => window.clearTimeout(timeout);
-  }, [draft.productUrl, sessionToken]);
+  }, [draft.productUrl, sessionToken, productCatalog]);
 
   return (
     <ModalShell title="Sửa / thêm đơn hàng" eyebrow="Order management" close={close}>
@@ -4005,19 +4286,21 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
                     const nextUrl = event.target.value;
                     const chemistFallback = chemistPreviewFromUrl(nextUrl);
                     const isManualImage = draft.productImageSource === "manual";
+                    const { match, patch } = productCatalogPatch(draft, { ...draft, productUrl: nextUrl, product: chemistFallback?.title || draft.product });
                     if (looksLikeProductUrl(nextUrl)) {
                       setPreviewStatus("loading");
-                      setPreviewError("");
+                      setPreviewError(match ? `Đã khớp dữ liệu sản phẩm đã lưu: ${money(match.unitWeightKg) > 0 ? `${kg(match.unitWeightKg)}kg/sp` : "thiếu kg"}.` : "");
                     } else {
                       setPreviewStatus("idle");
                     }
                     setDraft({
                       ...draft,
+                      ...patch,
                       productUrl: nextUrl,
-                      product: draft.product || chemistFallback?.title || draft.product,
-                      source: chemistFallback?.siteName || (looksLikeProductUrl(nextUrl) ? "" : draft.source),
-                      productImageUrl: isManualImage ? draft.productImageUrl : (chemistFallback?.imageUrl || ""),
-                      productImageSource: isManualImage ? "manual" : (chemistFallback?.imageUrl ? "auto" : "")
+                      product: draft.product || chemistFallback?.title || patch.product || draft.product,
+                      source: draft.source || chemistFallback?.siteName || patch.source || (looksLikeProductUrl(nextUrl) ? "" : draft.source),
+                      productImageUrl: isManualImage ? draft.productImageUrl : (chemistFallback?.imageUrl || patch.productImageUrl || ""),
+                      productImageSource: isManualImage ? "manual" : (chemistFallback?.imageUrl || patch.productImageUrl ? "auto" : "")
                     });
                   }}
                 />
@@ -4038,6 +4321,11 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
                 <div className="product-media-controls">
                   <strong>{draft.productImageUrl ? (draft.productImageSource === "manual" ? "Ảnh upload tay" : "Ảnh lấy từ link") : "Chưa có ảnh sản phẩm"}</strong>
                   <span>{previewStatus === "loading" ? "Đang tự đọc link, ảnh và giá sản phẩm..." : previewError || "Dán link là app tự đọc ảnh và giá; nút Lấy lại chỉ dùng khi muốn refresh."}</span>
+                  {catalogMatch && (
+                    <span className="product-catalog-hit">
+                      Dữ liệu sản phẩm đã lưu: {catalogMatch.ordersCount} đơn · {money(catalogMatch.unitWeightKg) > 0 ? `${kg(catalogMatch.unitWeightKg)}kg/sp` : "thiếu kg"} · {money(catalogMatch.aud) > 0 ? audPrice(catalogMatch.aud) : "chưa có giá"}
+                    </span>
+                  )}
                   <label className="source-mini-field">
                     Shop / nền tảng
                     <input value={draft.source ?? ""} placeholder="Tự nhận từ link hoặc nhập tên shop" onChange={(event) => setDraft({ ...draft, source: event.target.value })} />
