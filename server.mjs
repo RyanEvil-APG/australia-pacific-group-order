@@ -682,7 +682,38 @@ async function fetchChemistFallbackPrice(target) {
       const price = readProductPrice(await readResponseTextLimited(response));
       if (price !== null) return price;
     }
-    return null;
+    return await fetchChemistReaderPrice(target);
+  } catch {
+    return await fetchChemistReaderPrice(target);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchChemistReaderPrice(target) {
+  if (!isChemistWarehouseUrl(target)) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 14000);
+  try {
+    const response = await fetch(`https://r.jina.ai/${target.toString()}`, {
+      signal: controller.signal,
+      redirect: "follow",
+      headers: {
+        "user-agent": "Mozilla/5.0 AustraliaPacificGroupOrder/1.0",
+        accept: "text/plain, text/markdown, */*",
+        "x-return-format": "markdown"
+      }
+    });
+    if (!response.ok) return null;
+    const text = await readResponseTextLimited(response, 900_000);
+    const headingPrice = text.match(/^##\s*\$\s*([0-9]{1,4}(?:\.[0-9]{1,2})?)/im)?.[1];
+    const parsedHeadingPrice = priceFromValue(headingPrice);
+    if (parsedHeadingPrice !== null && parsedHeadingPrice < 10000) return parsedHeadingPrice;
+
+    const visiblePrices = [...text.matchAll(/\$\s*([0-9]{1,4}(?:\.[0-9]{1,2})?)/g)]
+      .map((match) => Number(match[1]))
+      .filter((value) => Number.isFinite(value) && value > 0.5 && value < 10000);
+    return visiblePrices.length ? Math.min(...visiblePrices) : null;
   } catch {
     return null;
   } finally {
