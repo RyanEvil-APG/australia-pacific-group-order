@@ -21,6 +21,7 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  TriangleAlert,
   Trash2,
   Truck,
   Upload,
@@ -87,6 +88,11 @@ const emptyOrder = {
   productImageSource: "",
   status: "waiting_buy",
   batchId: "",
+  outOfStockAt: "",
+  outOfStockDate: "",
+  outOfStockBatchId: "",
+  outOfStockMovedAt: "",
+  customerWantsNextBatch: false,
   supervisorId: "ryan",
   assigneeId: "staff-vn",
   buyerId: "staff-vn",
@@ -170,6 +176,7 @@ const navItems = [
   { id: "overview", label: "Tổng quan", icon: LineChart },
   { id: "orders", label: "Đơn hàng", icon: ClipboardList },
   { id: "buying", label: "Mua hàng & Packing", icon: PackageCheck },
+  { id: "stockouts", label: "Hàng hết", icon: TriangleAlert },
   { id: "flights", label: "Chuyến bay", icon: Plane },
   { id: "after-arrival", label: "Hàng đã về", icon: Truck },
   { id: "stock", label: "Hàng có sẵn", icon: Boxes },
@@ -180,6 +187,7 @@ const navItems = [
 
 const orderStatuses = [
   { id: "waiting_buy", label: "Chờ mua" },
+  { id: "out_of_stock", label: "Hết hàng" },
   { id: "purchased", label: "Đã mua" },
   { id: "sent_vn", label: "Đã gửi về VN" },
   { id: "received_vn", label: "Đã nhận ở VN" },
@@ -286,6 +294,11 @@ function normalizeOrder(order) {
     source: order?.source || chemistFallback?.siteName || "",
     productImageUrl,
     productImageSource: productImageUrl ? (order?.productImageSource || "auto") : "",
+    outOfStockAt: order?.outOfStockAt || "",
+    outOfStockDate: order?.outOfStockDate || "",
+    outOfStockBatchId: order?.outOfStockBatchId || "",
+    outOfStockMovedAt: order?.outOfStockMovedAt || "",
+    customerWantsNextBatch: Boolean(order?.customerWantsNextBatch),
     splitBill: Boolean(order?.splitBill),
     customerShipped: Boolean(order?.customerShipped || normalizeOrderStatus(order?.status) === "delivered"),
     paidInFull: Boolean(order?.paidInFull),
@@ -408,6 +421,20 @@ function autoBatchForOrder(batches, orderDate = today()) {
   return scored.sort((a, b) => (a.primaryTime ?? a.nextTime) - (b.primaryTime ?? b.nextTime))[0]?.batch ?? null;
 }
 
+function batchWorkflowTime(batch) {
+  return dateTime(batch?.cutoff) ?? dateTime(batch?.departure) ?? dateTime(batch?.arrival) ?? 0;
+}
+
+function nextOpenBatchAfter(batches, currentBatch, orderDate = today()) {
+  const currentTime = batchWorkflowTime(currentBatch) || dateTime(orderDate) || dateTime(today()) || 0;
+  const candidates = sortedFlightBatches(batches)
+    .filter((batch) => batch.id !== currentBatch?.id)
+    .filter((batch) => !batchHasArrived(batch) && normalizeBatchStatus(batch.status) === "open")
+    .map((batch) => ({ batch, time: batchWorkflowTime(batch) || Number.MAX_SAFE_INTEGER }))
+    .filter((item) => item.time >= currentTime);
+  return candidates.sort((a, b) => a.time - b.time)[0]?.batch ?? null;
+}
+
 function batchExchangeRate(batches, batchId) {
   return money(findOrderBatch(batches, { batchId })?.exchangeRate) || exchangeRate;
 }
@@ -459,7 +486,7 @@ function compareOrdersForDesk(a, b, batches) {
   const bBatch = findOrderBatch(batches, b);
   const timeDiff = orderDeskSortTime(b, bBatch) - orderDeskSortTime(a, aBatch);
   if (timeDiff !== 0) return timeDiff;
-  const statusRank = { waiting_buy: 0, purchased: 1, sent_vn: 2, received_vn: 3, delivered: 8, cancelled: 9 };
+  const statusRank = { waiting_buy: 0, out_of_stock: 1, purchased: 2, sent_vn: 3, received_vn: 4, delivered: 8, cancelled: 9 };
   const rankDiff = (statusRank[normalizeOrderStatus(a.status)] ?? 5) - (statusRank[normalizeOrderStatus(b.status)] ?? 5);
   if (rankDiff !== 0) return rankDiff;
   return String(b.id || "").localeCompare(String(a.id || ""));
@@ -1314,7 +1341,13 @@ function App() {
         if (order.id !== id) return order;
         if (!canEditOrder(order)) return order;
         const nextStatus = normalizeOrderStatus(status);
-        const patch = { status: nextStatus };
+        const patch = { status: nextStatus, updatedAt: new Date().toISOString() };
+        if (nextStatus === "out_of_stock") {
+          patch.outOfStockAt = patch.updatedAt;
+          patch.outOfStockDate = today();
+          patch.outOfStockBatchId = order.batchId || order.outOfStockBatchId || "";
+          patch.customerWantsNextBatch = false;
+        }
         if (nextStatus === "received_vn" && !order.receivedVnDate) patch.receivedVnDate = today();
         if (nextStatus === "delivered") {
           patch.customerShipped = true;
@@ -1322,6 +1355,33 @@ function App() {
           if (!order.receivedVnDate) patch.receivedVnDate = today();
         }
         return normalizeOrder({ ...order, ...patch });
+      })
+    );
+  }
+
+  function moveOutOfStockToNextBatch(id) {
+    setOrders((current) =>
+      current.map((order) => {
+        if (order.id !== id) return order;
+        if (!canEditOrder(order)) return order;
+        const currentBatch = findOrderBatch(batches, order);
+        const nextBatch = nextOpenBatchAfter(batches, currentBatch, order.orderDate);
+        if (!nextBatch) {
+          return normalizeOrder({
+            ...order,
+            customerWantsNextBatch: true,
+            updatedAt: new Date().toISOString()
+          });
+        }
+        return normalizeOrder({
+          ...order,
+          ...batchPricingPatch(nextBatch),
+          status: "waiting_buy",
+          customerWantsNextBatch: true,
+          outOfStockBatchId: order.outOfStockBatchId || order.batchId || "",
+          outOfStockMovedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
       })
     );
   }
@@ -1658,6 +1718,17 @@ function App() {
             openOrder={openOrder}
             openBatch={openBatch}
             updateOrderStatus={updateOrderStatus}
+            canEditOrder={canEditOrder}
+          />
+        )}
+
+        {activeView === "stockouts" && (
+          <StockoutsView
+            batches={batches}
+            orders={orders}
+            openOrder={openOrder}
+            updateOrderStatus={updateOrderStatus}
+            moveOutOfStockToNextBatch={moveOutOfStockToNextBatch}
             canEditOrder={canEditOrder}
           />
         )}
@@ -2001,6 +2072,9 @@ function OverviewBuyingBoard({ batches, orders, openOrder, openBuyingChecklist, 
   const purchasedOrders = nearestBatch
     ? orders.filter((order) => order.batchId === nearestBatch.id && normalizeOrderStatus(order.status) === "purchased")
     : [];
+  const stockoutOrders = nearestBatch
+    ? orders.filter((order) => order.batchId === nearestBatch.id && normalizeOrderStatus(order.status) === "out_of_stock")
+    : [];
 
   return (
     <section className="overview-buying-board">
@@ -2017,13 +2091,17 @@ function OverviewBuyingBoard({ batches, orders, openOrder, openBuyingChecklist, 
       </div>
       <div className="overview-buying-stats">
         <span>Chờ mua <strong>{waitingOrders.length}</strong></span>
+        <span>Hết hàng <strong>{stockoutOrders.length}</strong></span>
         <span>Đã mua <strong>{purchasedOrders.length}</strong></span>
       </div>
       <div className="overview-buying-list">
         {waitingOrders.slice(0, 3).map((order) => (
           <div className="overview-buying-item" key={order.id} onClick={() => openOrder(order)}>
             <ProductCell order={order} />
-            <button type="button" disabled={canEditOrder && !canEditOrder(order)} onClick={(event) => { event.stopPropagation(); updateOrderStatus(order.id, "purchased"); }}>Đã mua</button>
+            <div className="overview-buying-actions">
+              <button type="button" disabled={canEditOrder && !canEditOrder(order)} onClick={(event) => { event.stopPropagation(); updateOrderStatus(order.id, "purchased"); }}>Đã mua</button>
+              <button className="warning-action" type="button" disabled={canEditOrder && !canEditOrder(order)} onClick={(event) => { event.stopPropagation(); updateOrderStatus(order.id, "out_of_stock"); }}>Hết hàng</button>
+            </div>
           </div>
         ))}
         {!waitingOrders.length && <div className="overview-buying-empty">Chuyến gần nhất không còn đơn chờ mua.</div>}
@@ -2385,6 +2463,7 @@ function flightOrderProgress(batchOrders) {
       const status = normalizeOrderStatus(order.status);
       sum.total += 1;
       if (status === "waiting_buy") sum.waitingBuy += 1;
+      if (status === "out_of_stock") sum.outOfStock += 1;
       if (status === "purchased") sum.purchased += 1;
       if (status === "sent_vn") sum.sentVn += 1;
       if (status === "received_vn") sum.receivedVn += 1;
@@ -2392,7 +2471,7 @@ function flightOrderProgress(batchOrders) {
       if (status === "cancelled") sum.cancelled += 1;
       return sum;
     },
-    { total: 0, waitingBuy: 0, purchased: 0, sentVn: 0, receivedVn: 0, delivered: 0, cancelled: 0 }
+    { total: 0, waitingBuy: 0, outOfStock: 0, purchased: 0, sentVn: 0, receivedVn: 0, delivered: 0, cancelled: 0 }
   );
 }
 
@@ -2402,6 +2481,7 @@ function sortedFlightBatches(batches) {
 
 const packingWorkflowStatuses = [
   { id: "waiting_buy", label: "Chờ mua", hint: "Cần buyer xử lý", tone: "warn" },
+  { id: "out_of_stock", label: "Hết hàng", hint: "Chờ khách chọn chuyển chuyến/hủy", tone: "stockout" },
   { id: "purchased", label: "Đã mua", hint: "Chờ gom/gửi về VN", tone: "ready" },
   { id: "sent_vn", label: "Đã gửi về VN", hint: "Theo dõi hàng bay", tone: "flying" },
   { id: "received_vn", label: "Đã nhận ở VN", hint: "Chờ giao khách", tone: "arrived" }
@@ -2442,6 +2522,7 @@ function PackingListSummary({ title, eyebrow, batches, orders, openBuyingCheckli
             <span>Về VN {batch.arrival || "-"} · Cutoff {batch.cutoff || "-"}</span>
             <div className="packing-card-stats">
               <span>Chờ mua <strong>{progress.waitingBuy}</strong></span>
+              <span>Hết hàng <strong>{progress.outOfStock}</strong></span>
               <span>Đã mua <strong>{progress.purchased}</strong></span>
               <span>Đã gửi <strong>{progress.sentVn}</strong></span>
               <span>Đã nhận <strong>{progress.receivedVn}</strong></span>
@@ -2471,6 +2552,103 @@ function PackingListSummary({ title, eyebrow, batches, orders, openBuyingCheckli
   );
 }
 
+function StockoutsView({ batches, orders, openOrder, updateOrderStatus, moveOutOfStockToNextBatch, canEditOrder }) {
+  const stockoutOrders = orders
+    .filter((order) => normalizeOrderStatus(order.status) === "out_of_stock")
+    .sort((a, b) => String(b.outOfStockAt || b.updatedAt || "").localeCompare(String(a.outOfStockAt || a.updatedAt || "")));
+  const groups = [
+    ...sortedFlightBatches(batches).map((batch) => ({
+      id: batch.id,
+      batch,
+      title: batch.code || batch.id,
+      subtitle: `Hết khi mua cho chuyến này · Về VN ${batch.arrival || "-"} · Cutoff ${batch.cutoff || "-"}`,
+      orders: stockoutOrders.filter((order) => (order.outOfStockBatchId || order.batchId) === batch.id)
+    })),
+    {
+      id: "unassigned",
+      batch: null,
+      title: "Chưa rõ chuyến",
+      subtitle: "Đơn hết hàng chưa có chuyến gốc hoặc chưa được gán chuyến.",
+      orders: stockoutOrders.filter((order) => !findOrderBatch(batches, { batchId: order.outOfStockBatchId || order.batchId }))
+    }
+  ].filter((group) => group.orders.length);
+  const nextMoveCount = stockoutOrders.filter((order) => order.customerWantsNextBatch).length;
+
+  return (
+    <div className="screen-stack stockout-screen">
+      <div className="panel-title standalone compact-page-title">
+        <div>
+          <span className="eyebrow">Buying exception</span>
+          <h2>Hàng hết theo chuyến bay</h2>
+        </div>
+      </div>
+      <section className="metric-grid lean stockout-kpi-grid">
+        <Kpi label="Đơn đang hết hàng" value={String(stockoutOrders.length)} icon={TriangleAlert} tone={stockoutOrders.length ? "warning" : "success"} />
+        <Kpi label="Khách muốn chuyển chuyến" value={String(nextMoveCount)} icon={Plane} />
+        <Kpi label="Chuyến bị ảnh hưởng" value={String(groups.length)} icon={ClipboardList} />
+      </section>
+      <section className="panel stockout-panel">
+        <div className="panel-title">
+          <div>
+            <span className="eyebrow">Stockout board</span>
+            <h2>Danh sách cần quyết định</h2>
+          </div>
+          <TriangleAlert size={18} />
+        </div>
+        <div className="stockout-group-list">
+          {groups.map((group) => (
+            <article className="stockout-group" key={group.id}>
+              <div className="stockout-group-head">
+                <div>
+                  <strong>{group.title}</strong>
+                  <span>{group.subtitle}</span>
+                </div>
+                <em>{group.orders.length} đơn</em>
+              </div>
+              <div className="stockout-card-list">
+                {group.orders.map((order) => {
+                  const currentBatch = findOrderBatch(batches, order);
+                  const originalBatch = findOrderBatch(batches, { batchId: order.outOfStockBatchId || order.batchId });
+                  const nextBatch = nextOpenBatchAfter(batches, currentBatch || originalBatch, order.orderDate);
+                  const finance = orderFinance(order);
+                  const editable = !canEditOrder || canEditOrder(order);
+                  return (
+                    <article className="stockout-card" key={order.id} onClick={() => openOrder(order)}>
+                      <ProductCell order={order} />
+                      <div className="stockout-main">
+                        <strong>{order.product || order.id}</strong>
+                        <span>{order.customer || "-"} · SL {finance.quantity} · {kg(finance.totalWeightKg)}kg</span>
+                        <span>{order.id}</span>
+                        <span className="stockout-path">
+                          Gốc: {originalBatch?.code || originalBatch?.id || "-"} · Hiện tại: {currentBatch?.code || currentBatch?.id || "-"}
+                        </span>
+                      </div>
+                      <div className="stockout-status">
+                        <span className="status-chip out_of_stock">Hết hàng</span>
+                        <small>{order.outOfStockDate || today()}</small>
+                        {nextBatch && <small>Chuyến sau: {nextBatch.code || nextBatch.id}</small>}
+                      </div>
+                      <div className="stockout-actions" onClick={(event) => event.stopPropagation()}>
+                        <button type="button" disabled={!editable || !nextBatch} onClick={() => moveOutOfStockToNextBatch(order.id)}>Chuyển chuyến sau</button>
+                        <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "waiting_buy")}>Mua lại</button>
+                        <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "cancelled")}>Hủy</button>
+                        <button type="button" onClick={() => openOrder(order)}>Sửa</button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </article>
+          ))}
+          {!groups.length && (
+            <EmptyState title="Chưa có hàng hết" body="Khi buyer bấm Hết hàng trong Mua hàng & Packing, đơn sẽ tự nằm ở đây theo chuyến bay gốc để quyết định chuyển chuyến sau, mua lại hoặc hủy." />
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, openOrder, openBatch, updateOrderStatus, canEditOrder }) {
   const sortedBatches = sortedFlightBatches(batches);
   const unassignedOrders = orders.filter((order) => !order.batchId && normalizeOrderStatus(order.status) !== "cancelled");
@@ -2489,6 +2667,7 @@ function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, o
   const progressItems = [
     { label: "Việc mở", value: activeWorkflowOrders.length, icon: ClipboardList },
     { label: "Chờ mua", value: progress.waitingBuy, icon: PackageCheck, tone: progress.waitingBuy ? "warning" : "success" },
+    { label: "Hết hàng", value: progress.outOfStock, icon: TriangleAlert, tone: progress.outOfStock ? "warning" : "success" },
     { label: "Đã mua", value: progress.purchased, icon: CheckCircle2 },
     { label: "Đang về VN", value: progress.sentVn, icon: Plane },
     { label: "Chờ giao", value: progress.receivedVn, icon: Boxes }
@@ -2613,6 +2792,7 @@ function FlightsViewLegacy({ batches, orders, openBatch, openOrder, openBuyingCh
       const progress = flightOrderProgress(batchOrders);
       sum.orders += batchOrders.length;
       sum.waitingBuy += progress.waitingBuy;
+      sum.outOfStock += progress.outOfStock;
       sum.purchased += progress.purchased;
       sum.sentVn += progress.sentVn;
       sum.freightAud += money(batch.freightAud);
@@ -2621,7 +2801,7 @@ function FlightsViewLegacy({ batches, orders, openBatch, openOrder, openBuyingCh
       sum.cost += batchOrders.reduce((orderSum, order) => orderSum + orderFinance(order).totalCostVnd, 0);
       return sum;
     },
-    { orders: 0, waitingBuy: 0, purchased: 0, sentVn: 0, freightAud: 0, remaining: 0, revenue: 0, cost: 0 }
+    { orders: 0, waitingBuy: 0, outOfStock: 0, purchased: 0, sentVn: 0, freightAud: 0, remaining: 0, revenue: 0, cost: 0 }
   );
 
   return (
@@ -2796,7 +2976,7 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
       sum.cost += finance.adjustedCost;
       return sum;
     },
-    { orders: 0, waitingBuy: 0, purchased: 0, sentVn: 0, freightAud: 0, estimatedWeightKg: 0, chargeWeightKg: 0, actualAirFreightVnd: 0, remaining: 0, revenue: 0, cost: 0 }
+    { orders: 0, waitingBuy: 0, outOfStock: 0, purchased: 0, sentVn: 0, freightAud: 0, estimatedWeightKg: 0, chargeWeightKg: 0, actualAirFreightVnd: 0, remaining: 0, revenue: 0, cost: 0 }
   );
 
   const renderFlightRows = (rows, emptyTitle, emptyBody) => (
@@ -2836,6 +3016,7 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
                   <div className="flight-progress-mini">
                     <span>Order {batchOrders.length}</span>
                     <span className={progress.waitingBuy ? "warn" : ""}>Chờ mua {progress.waitingBuy}</span>
+                    <span className={progress.outOfStock ? "warn" : ""}>Hết hàng {progress.outOfStock}</span>
                     <span>Đã mua {progress.purchased}</span>
                     <span>Đã gửi {progress.sentVn}</span>
                     <span>Đã nhận {progress.receivedVn}</span>
@@ -2890,6 +3071,7 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
         <Kpi label="Chuyến đang mở" value={String(activeBatches.length)} icon={Plane} />
         <Kpi label="Order đã link" value={String(totals.orders)} icon={ClipboardList} />
         <Kpi label="Chờ mua" value={String(totals.waitingBuy)} icon={PackageCheck} tone={totals.waitingBuy ? "warning" : "success"} />
+        <Kpi label="Hết hàng" value={String(totals.outOfStock)} icon={TriangleAlert} tone={totals.outOfStock ? "warning" : "success"} />
         <Kpi label="Kg chốt / ước" value={`${kg(totals.chargeWeightKg)} / ${kg(totals.estimatedWeightKg)}kg`} icon={Boxes} />
         <Kpi label="Chi cước bay" value={vnd(totals.actualAirFreightVnd)} icon={CreditCard} />
         {canSeeProfit && <Kpi label="Lãi chuyến đang mở" value={vnd(totals.revenue - totals.cost)} icon={Gem} tone="success" />}
@@ -3037,6 +3219,9 @@ function FlightOrderQuickActions({ order, openOrder, updateOrderStatus, canEditO
     <div className="flight-order-actions" onClick={(event) => event.stopPropagation()}>
       {!editable && <em className="locked-action">Cần Ryan cấp quyền</em>}
       {status === "waiting_buy" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "purchased")}>Đã mua</button>}
+      {status === "waiting_buy" && <button className="warning-action" type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "out_of_stock")}>Hết hàng</button>}
+      {status === "out_of_stock" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "waiting_buy")}>Mua lại</button>}
+      {status === "out_of_stock" && <button className="warning-action" type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "cancelled")}>Hủy</button>}
       {status === "purchased" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "sent_vn")}>Đã gửi VN</button>}
       {status === "sent_vn" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "received_vn")}>Đã nhận VN</button>}
       {status === "received_vn" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "delivered")}>Đã giao</button>}
@@ -3868,6 +4053,7 @@ function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderSt
           <div className="flight-checklist-stats">
             <span>Tổng đơn <strong>{progress.total}</strong></span>
             <span>Chờ mua <strong>{progress.waitingBuy}</strong></span>
+            <span>Hết hàng <strong>{progress.outOfStock}</strong></span>
             <span>Đã mua <strong>{progress.purchased}</strong></span>
             <span>Đã gửi/nhận <strong>{progress.sentVn + progress.receivedVn}</strong></span>
             <span>Tổng kg <strong>{kg(totalWeight)}</strong></span>

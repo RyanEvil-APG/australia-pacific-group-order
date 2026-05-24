@@ -616,7 +616,7 @@ th span {
 
 .overview-buying-stats {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 7px;
 }
 
@@ -663,6 +663,18 @@ th span {
 
 .overview-buying-item button {
   justify-self: stretch;
+}
+
+.overview-buying-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.overview-buying-actions .warning-action {
+  color: #9b2c3a;
+  background: #fff0f1;
+  border-color: #ffd1d8;
 }
 
 .overview-buying-empty {
@@ -985,6 +997,11 @@ tbody tr.split-bill-row {
 .status-chip.waiting_buy {
   color: #7b4216;
   background: #fff1d4;
+}
+
+.status-chip.out_of_stock {
+  color: #9b2c3a;
+  background: #fff0f1;
 }
 
 .status-chip.purchased {
@@ -1578,7 +1595,7 @@ tbody tr.split-bill-row {
 .buying-progress-strip {
   display: grid;
   grid-column: 1 / -1;
-  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
 }
 
@@ -1631,7 +1648,7 @@ tbody tr.split-bill-row {
 
 .workflow-board {
   display: grid;
-  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 12px;
   padding: 12px;
   overflow-x: auto;
@@ -1654,6 +1671,10 @@ tbody tr.split-bill-row {
 
 .workflow-column.warn {
   background: #fff7ed;
+}
+
+.workflow-column.stockout {
+  background: #fff4f5;
 }
 
 .workflow-column.ready {
@@ -2012,8 +2033,16 @@ tbody tr.split-bill-row {
   border-color: #274d7a;
 }
 
+.flight-order-actions button.warning-action,
+.stockout-actions button.warning-action {
+  color: #9b2c3a;
+  background: #fff0f1;
+  border-color: #ffd1d8;
+}
+
 .flight-order-actions button:disabled,
-.overview-buying-item button:disabled {
+.overview-buying-item button:disabled,
+.stockout-actions button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
@@ -2024,6 +2053,117 @@ tbody tr.split-bill-row {
   font-size: 0.72rem;
   font-style: normal;
   font-weight: 950;
+}
+
+.stockout-panel {
+  overflow: hidden;
+}
+
+.stockout-group-list {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.stockout-group {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: #fffdf8;
+  border: 1px solid rgba(33, 29, 23, 0.09);
+  border-radius: 8px;
+}
+
+.stockout-group-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stockout-group-head strong,
+.stockout-group-head span {
+  display: block;
+}
+
+.stockout-group-head span {
+  margin-top: 4px;
+  color: #746c61;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.stockout-group-head em {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  color: #9b2c3a;
+  background: #fff0f1;
+  border-radius: 999px;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.stockout-card-list {
+  display: grid;
+  gap: 8px;
+}
+
+.stockout-card {
+  display: grid;
+  grid-template-columns: minmax(230px, 1.15fr) minmax(220px, 1fr) minmax(130px, 0.55fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.08);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.stockout-card:hover {
+  background: #fff8e8;
+}
+
+.stockout-main,
+.stockout-status {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.stockout-main span,
+.stockout-status small {
+  color: #746c61;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.stockout-path {
+  word-break: break-word;
+}
+
+.stockout-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.stockout-actions button {
+  min-height: 34px;
+  padding: 0 10px;
+  color: #211d17;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.12);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.stockout-actions button:first-child {
+  color: #fffaf0;
+  background: #11664f;
+  border-color: #11664f;
 }
 
 .post-arrival-panel {
@@ -2817,7 +2957,7 @@ tbody tr.split-bill-row {
   }
 
   .buying-progress-strip {
-    grid-template-columns: repeat(5, minmax(118px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
     overflow-x: auto;
     padding-bottom: 2px;
   }
@@ -3018,11 +3158,20 @@ tbody tr.split-bill-row {
     grid-template-columns: 1fr;
   }
 
+  .stockout-card {
+    grid-template-columns: 1fr;
+  }
+
+  .stockout-group-head {
+    display: grid;
+  }
+
   .flight-order-actions {
     justify-content: stretch;
   }
 
-  .flight-order-actions button {
+  .flight-order-actions button,
+  .stockout-actions button {
     flex: 1 1 120px;
   }
 
