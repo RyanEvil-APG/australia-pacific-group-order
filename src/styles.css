@@ -1401,6 +1401,54 @@ tbody tr.split-bill-row {
   border-radius: 8px;
 }
 
+.formula-card {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: #fffdf8;
+  border: 1px solid rgba(39, 77, 122, 0.14);
+  border-radius: 8px;
+}
+
+.summary-section-title {
+  color: #8d6a2c;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.formula-card p {
+  color: #554d42;
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.formula-line {
+  display: grid;
+  grid-template-columns: minmax(92px, 0.34fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  background: #eef5ff;
+  border-radius: 8px;
+}
+
+.formula-line span {
+  margin: 0;
+  color: #746c61;
+  font-size: 0.7rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.formula-line strong {
+  color: #111;
+  font-size: 0.84rem;
+  line-height: 1.25;
+}
+
 .batch-stats span,
 .batch-cashline span,
 .auto-summary span,

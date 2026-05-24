@@ -178,14 +178,14 @@ const navItems = [
   { id: "overview", label: "Tổng quan", icon: LineChart },
   { id: "orders", label: "Đơn hàng", icon: ClipboardList },
   { id: "buying", label: "Mua hàng & Packing", icon: PackageCheck },
-  { id: "products", label: "Dữ liệu sản phẩm", icon: Database },
   { id: "stockouts", label: "Hàng hết", icon: TriangleAlert },
   { id: "flights", label: "Chuyến bay", icon: Plane },
   { id: "after-arrival", label: "Hàng đã về", icon: Truck },
   { id: "stock", label: "Hàng có sẵn", icon: Boxes },
   { id: "customers", label: "Khách hàng", icon: UserRound },
   { id: "cashflow", label: "Thu/chi", icon: CreditCard },
-  { id: "tasks", label: "Board", icon: Bell }
+  { id: "tasks", label: "Board", icon: Bell },
+  { id: "products", label: "Dữ liệu sản phẩm", icon: Database }
 ];
 
 const orderStatuses = [
@@ -689,12 +689,8 @@ function batchBillableOrderRows(batch, orders) {
 }
 
 function orderBillingWeightKg(order, batch, orders) {
-  const actualWeightKg = batchActualWeightKg(batch);
-  const billableOrders = batchBillableOrderRows(batch, orders);
-  const belongsToBatch = billableOrders.some((item) => item.id === order?.id);
-  if (actualWeightKg > 0 && billableOrders.length > 0 && belongsToBatch) {
-    return actualWeightKg / billableOrders.length;
-  }
+  void batch;
+  void orders;
   return orderTotalWeightKg(order);
 }
 
@@ -747,8 +743,17 @@ function batchFinanceSummary(batch, orders) {
     deposit,
     remaining,
     orderCost,
-    adjustedCost: actualWeightKg > 0 ? orderCost : orderCost - estimatedAirFreightVnd + actualAirFreightVnd
+    adjustedCost: actualWeightKg > 0 ? orderCost - estimatedAirFreightVnd + actualAirFreightVnd : orderCost
   };
+}
+
+function displayText(value, fallback = "") {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  if (value && typeof value === "object") {
+    return value.en || value["en-AU"] || Object.values(value).find((item) => typeof item === "string") || fallback;
+  }
+  return fallback;
 }
 
 function normalizeProductText(value) {
@@ -792,11 +797,11 @@ function mergeProductCatalogItem(existing, order, batch, orders) {
   const next = {
     ...(existing || {}),
     key: existing?.key || productIdentityKey(order),
-    product: order.product || existing?.product || "Chưa nhập tên sản phẩm",
-    source: order.source || existing?.source || "",
-    productUrl: order.productUrl || existing?.productUrl || "",
-    productImageUrl: order.productImageUrl || existing?.productImageUrl || "",
-    productImageSource: order.productImageSource || existing?.productImageSource || "",
+    product: displayText(order.product || existing?.product, "Chưa nhập tên sản phẩm"),
+    source: displayText(order.source || existing?.source),
+    productUrl: displayText(order.productUrl || existing?.productUrl),
+    productImageUrl: displayText(order.productImageUrl || existing?.productImageUrl),
+    productImageSource: displayText(order.productImageSource || existing?.productImageSource),
     unitWeightKg: money(order.unitWeightKg) > 0 ? money(order.unitWeightKg) : money(existing?.unitWeightKg),
     aud: money(order.aud) > 0 ? money(order.aud) : money(existing?.aud),
     ordersCount: (existing?.ordersCount || 0) + 1,
@@ -812,11 +817,11 @@ function mergeProductCatalogItem(existing, order, batch, orders) {
   };
 
   if (orderTime >= existingTime) {
-    next.product = order.product || next.product;
-    next.source = order.source || next.source;
-    next.productUrl = order.productUrl || next.productUrl;
-    next.productImageUrl = order.productImageUrl || next.productImageUrl;
-    next.productImageSource = order.productImageSource || next.productImageSource;
+    next.product = displayText(order.product || next.product, "Chưa nhập tên sản phẩm");
+    next.source = displayText(order.source || next.source);
+    next.productUrl = displayText(order.productUrl || next.productUrl);
+    next.productImageUrl = displayText(order.productImageUrl || next.productImageUrl);
+    next.productImageSource = displayText(order.productImageSource || next.productImageSource);
     if (money(order.aud) > 0) next.aud = money(order.aud);
     if (money(order.unitWeightKg) > 0) next.unitWeightKg = money(order.unitWeightKg);
   }
@@ -2511,8 +2516,9 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit, emptyT
 function ProductsView({ productCatalog, openOrder }) {
   const [productQuery, setProductQuery] = React.useState("");
   const [productFilter, setProductFilter] = React.useState("all");
+  const catalogRows = Array.isArray(productCatalog) ? productCatalog : [];
   const normalizedQuery = normalizeProductText(productQuery);
-  const filteredProducts = productCatalog.filter((product) => {
+  const filteredProducts = catalogRows.filter((product) => {
     const text = normalizeProductText(`${product.product} ${product.source} ${product.productUrl}`);
     const matchesQuery = !normalizedQuery || text.includes(normalizedQuery);
     const missingWeight = money(product.unitWeightKg) <= 0;
@@ -2522,13 +2528,13 @@ function ProductsView({ productCatalog, openOrder }) {
       (productFilter === "has-weight" && !missingWeight);
     return matchesQuery && matchesFilter;
   });
-  const topProducts = productCatalog.filter((product) => money(product.quantitySold) > 0).slice(0, 4);
-  const lowProducts = [...productCatalog]
+  const topProducts = catalogRows.filter((product) => money(product.quantitySold) > 0).slice(0, 4);
+  const lowProducts = [...catalogRows]
     .filter((product) => money(product.quantitySold) > 0)
     .sort((a, b) => money(a.quantitySold) - money(b.quantitySold) || (b.lastOrderTime || 0) - (a.lastOrderTime || 0))
     .slice(0, 4);
-  const missingWeightCount = productCatalog.filter((product) => money(product.unitWeightKg) <= 0).length;
-  const totalQuantity = productCatalog.reduce((sum, product) => sum + money(product.quantitySold), 0);
+  const missingWeightCount = catalogRows.filter((product) => money(product.unitWeightKg) <= 0).length;
+  const totalQuantity = catalogRows.reduce((sum, product) => sum + money(product.quantitySold), 0);
 
   return (
     <div className="screen-stack">
@@ -2540,10 +2546,10 @@ function ProductsView({ productCatalog, openOrder }) {
       </div>
 
       <div className="product-insight-grid">
-        <MetricCard icon={Database} label="Sản phẩm đã lưu" value={productCatalog.length} />
+        <MetricCard icon={Database} label="Sản phẩm đã lưu" value={catalogRows.length} />
         <MetricCard icon={PackageCheck} label="Tổng số lượng đã bán" value={formatter.format(totalQuantity)} />
         <MetricCard icon={TriangleAlert} label="Sản phẩm thiếu kg" value={missingWeightCount} tone={missingWeightCount ? "warning" : "success"} />
-        <MetricCard icon={BarChart3} label="Bán chạy nhất" value={topProducts[0]?.product || "-"} tone="success" />
+        <MetricCard icon={BarChart3} label="Bán chạy nhất" value={displayText(topProducts[0]?.product, "-")} tone="success" />
       </div>
 
       <div className="product-rank-grid">
@@ -2582,9 +2588,9 @@ function ProductsView({ productCatalog, openOrder }) {
                     <div className="order-product-cell product-catalog-name">
                       <div className="order-product-thumb"><ProductThumbImage item={product} /></div>
                       <div>
-                        <strong>{product.product}</strong>
-                        <span>{product.source || "Chưa có shop"}</span>
-                        {product.productUrl && <span>{product.productUrl}</span>}
+                        <strong>{displayText(product.product, "Chưa nhập tên sản phẩm")}</strong>
+                        <span>{displayText(product.source, "Chưa có shop")}</span>
+                        {product.productUrl && <span>{displayText(product.productUrl)}</span>}
                       </div>
                     </div>
                   </td>
@@ -2639,7 +2645,7 @@ function ProductRankCard({ title, products, openOrder }) {
             <b>{index + 1}</b>
             <div className="order-product-thumb"><ProductThumbImage item={product} /></div>
             <span>
-              <strong>{product.product}</strong>
+              <strong>{displayText(product.product, "Chưa nhập tên sản phẩm")}</strong>
               <em>{formatter.format(product.quantitySold || 0)} sản phẩm · {money(product.unitWeightKg) > 0 ? `${kg(product.unitWeightKg)}kg/sp` : "thiếu kg"}</em>
             </span>
           </button>
@@ -3617,7 +3623,7 @@ function FlightOrderRow({ order, batch = null, orders = [], openOrder, updateOrd
       <ProductCell order={order} batch={batch} orders={orders} />
       <div className="flight-order-meta">
         <strong>{order.id}</strong>
-        {finance.billingWeightKg !== finance.totalWeightKg && <span>Kg tinh cuoc {kg(finance.billingWeightKg)}kg</span>}
+        {finance.billingWeightKg !== finance.totalWeightKg && <span>Kg tính cước {kg(finance.billingWeightKg)}kg</span>}
         <span>{order.customer || "-"} · SL {finance.quantity} · Tong {kg(finance.totalWeightKg)}kg</span>
         <span className={`status-chip ${status}`}>{statusLabel(status)}</span>
       </div>
@@ -3933,7 +3939,7 @@ function CashflowView({ orders, batches, transactions, openTransaction, openOrde
                   <td data-label="Tổng thu / Doanh số">{vnd(revenue)}</td>
                   <td data-label="Đã cọc / đã thu">{vnd(deposit)}</td>
                   <td data-label="Số tiền còn lại phải thu"><span className="money-due">{vnd(remaining)}</span></td>
-                  <td data-label="Kg chốt / chia đều"><strong>{kg(chargeWeightKg)}kg</strong><span>{avgActualWeightKg > 0 ? `${kg(avgActualWeightKg)}kg/đơn` : "Chưa nhập kg cân thực tế"}</span></td>
+                  <td data-label="Kg chốt chuyến"><strong>{kg(chargeWeightKg)}kg</strong><span>{avgActualWeightKg > 0 ? `Bình quân tham khảo ${kg(avgActualWeightKg)}kg/đơn` : "Chưa nhập kg cân thực tế"}</span></td>
                   <td data-label="Chi cước bay"><strong>{vnd(actualAirFreightVnd)}</strong><span>{kg(chargeWeightKg)}kg x {aud(batch.freightAud)}</span></td>
                   <td data-label="Tổng chi phí">{vnd(cost)}</td>
                   {canSeeProfit && <td data-label="Lãi dự kiến">{vnd(revenue - cost)}</td>}
@@ -4067,7 +4073,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
     ? [...orders.filter((order) => order.id !== financeOrder.id), financeOrder]
     : orders;
   const finance = orderFinanceForBatch(financeOrder, selectedBatch, draftOrdersForFinance);
-  const batchUsesSharedWeight = batchActualWeightKg(selectedBatch) > 0 && finance.billingWeightKg !== finance.totalWeightKg;
+  const hasManualTotalThu = money(draft.totalThuVnd) > 0;
   const suggestedBatch = autoBatchForOrder(batches, draft.orderDate || today());
   const [previewStatus, setPreviewStatus] = React.useState("idle");
   const [previewError, setPreviewError] = React.useState("");
@@ -4343,11 +4349,14 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
                 <span>Tổng số kg sản phẩm</span>
                 <strong>{kg(finance.totalWeightKg)}kg</strong>
               </div>
-              <div className={batchUsesSharedWeight ? "live" : ""}>
-                <span>Kg tinh cuoc</span>
+              <div>
+                <span>Kg tính cước đơn này</span>
                 <strong>{kg(finance.billingWeightKg)}kg</strong>
               </div>
-              <em>{finance.quantity} sản phẩm × {kg(finance.unitWeightKg)}kg/sp</em>
+              <em className={finance.weightNeedsCheck ? "warning" : ""}>
+                {finance.quantity} sản phẩm × {kg(finance.unitWeightKg)}kg/sp = {kg(finance.totalWeightKg)}kg
+                {finance.weightNeedsCheck ? " · Cần điền kg/sp để tính cước đúng" : ""}
+              </em>
             </div>
             <Field label="Số lượng">
               <input
@@ -4441,15 +4450,38 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
           <div className="auto-summary">
             <div className="summary-hero"><span>Còn phải thu</span><strong>{vnd(finance.remainingVnd)}</strong></div>
             <div className="summary-hero"><span>Tổng thu</span><strong>{vnd(finance.totalThuVnd)}</strong></div>
-            <div><span>Tổng chi phí gốc</span><strong>{vnd(finance.totalCostVnd)}</strong></div>
+            <section className="formula-card">
+              <span className="summary-section-title">Công thức tính đơn</span>
+              <p>
+                Cước đơn dùng đúng kg sản phẩm: <strong>{finance.quantity} × {kg(finance.unitWeightKg)}kg/sp = {kg(finance.billingWeightKg)}kg</strong>.
+                Kg chốt cả chuyến chỉ dùng để đối soát chuyến bay, không tự chia vào từng đơn.
+              </p>
+              <div className="formula-line">
+                <span>Tiền hàng</span>
+                <strong>{audPrice(finance.unitAud)} × {finance.quantity} × {vnd(finance.rate)} = {vnd(finance.goodsVnd)}</strong>
+              </div>
+              <div className="formula-line">
+                <span>Phí mua hàng</span>
+                <strong>{finance.goodsVnd < orderFeeThresholdVnd ? "Dưới 500k: 50.000đ" : `Từ 500k: 10% = ${vnd(finance.purchaseFeeVnd)}`}</strong>
+              </div>
+              <div className="formula-line">
+                <span>Cước bay gốc</span>
+                <strong>{kg(finance.billingWeightKg)}kg × {aud(draft.intlShippingAud)}/kg × {vnd(finance.rate)} = {vnd(finance.airFreightVnd)}</strong>
+              </div>
+              <div className="formula-line">
+                <span>Thu cân cuối</span>
+                <strong>{kg(finance.billingWeightKg)}kg × {vnd(finance.finalWeightRateVnd)}/kg = {vnd(finance.finalWeightChargeVnd)}</strong>
+              </div>
+            </section>
+            <div><span>Tổng chi phí gốc</span><strong>{vnd(finance.totalCostVnd)}</strong><small>Tiền hàng + ship Úc + phí mua + cước bay gốc + phụ phí</small></div>
             <div><span>Cọc đã thu</span><strong>{vnd(finance.depositVnd)}</strong></div>
             <div><span>Tiền hàng</span><strong>{vnd(finance.goodsVnd)}</strong></div>
             <div><span>Phí mua hàng</span><strong>{vnd(finance.purchaseFeeVnd)}</strong></div>
-            <div><span>Cước cân gốc</span><strong>{vnd(finance.airFreightVnd)}</strong><small>{kg(finance.billingWeightKg)}kg x {aud(draft.intlShippingAud)}</small></div>
-            <div><span>Số tiền cân cuối</span><strong>{vnd(finance.finalWeightChargeVnd)}</strong><small>{kg(finance.billingWeightKg)}kg x {vnd(finance.finalWeightRateVnd)}</small></div>
-            <div><span>Lãi cân</span><strong>{vnd(finance.weightProfitVnd)}</strong></div>
+            <div><span>Cước cân gốc</span><strong>{vnd(finance.airFreightVnd)}</strong><small>{kg(finance.billingWeightKg)}kg × {aud(draft.intlShippingAud)} × {vnd(finance.rate)}</small></div>
+            <div><span>Số tiền cân cuối</span><strong>{vnd(finance.finalWeightChargeVnd)}</strong><small>{kg(finance.billingWeightKg)}kg × {vnd(finance.finalWeightRateVnd)}</small></div>
+            <div><span>Lãi cân</span><strong>{vnd(finance.weightProfitVnd)}</strong><small>Cân cuối thu khách - cước bay gốc</small></div>
             <div><span>Ship Úc</span><strong>{vnd(finance.domesticShippingVnd)}</strong></div>
-            <div><span>Tổng thu tự động</span><strong>{vnd(finance.suggestedTotalThuVnd)}</strong></div>
+            <div><span>{hasManualTotalThu ? "Tổng thu nhập tay" : "Tổng thu tự động"}</span><strong>{vnd(finance.totalThuVnd)}</strong><small>{hasManualTotalThu ? `Gợi ý tự động: ${vnd(finance.suggestedTotalThuVnd)}` : "Tiền hàng + ship Úc + phí mua + cân cuối + phụ phí"}</small></div>
           </div>
         </div>
         </fieldset>
@@ -4524,7 +4556,7 @@ function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderSt
             <strong>{kg(finance.chargeWeightKg)}kg</strong>
           </div>
           <div>
-            <span>Chia bình quân</span>
+            <span>Bình quân tham khảo</span>
             <strong>{finance.avgActualWeightKg > 0 ? `${kg(finance.avgActualWeightKg)}kg/đơn` : "-"}</strong>
           </div>
           <div>
