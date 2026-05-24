@@ -2732,19 +2732,24 @@ function StockoutsView({ batches, orders, openOrder, updateOrderStatus, moveOutO
 }
 
 function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, openOrder, openBatch, updateOrderStatus, canEditOrder }) {
+  const allSortedBatches = sortedFlightBatches(batches);
   const sortedBatches = upcomingFlightBatches(batches, 3);
+  const topBatchIds = new Set(sortedBatches.map((batch) => batch.id));
+  const olderBatches = allSortedBatches.filter((batch) => !topBatchIds.has(batch.id));
   const unassignedOrders = orders.filter((order) => !order.batchId && normalizeOrderStatus(order.status) !== "cancelled");
   React.useEffect(() => {
-    if (focusBatchId !== "all" && focusBatchId !== "unassigned" && !sortedBatches.some((batch) => batch.id === focusBatchId)) {
+    if (focusBatchId !== "all" && focusBatchId !== "unassigned" && !allSortedBatches.some((batch) => batch.id === focusBatchId)) {
       setFocusBatchId("all");
     }
-  }, [focusBatchId, setFocusBatchId, sortedBatches]);
+  }, [focusBatchId, setFocusBatchId, allSortedBatches]);
   const visibleBatches = focusBatchId === "all" || focusBatchId === "unassigned" ? sortedBatches : sortedBatches.filter((batch) => batch.id === focusBatchId);
+  const manualBatch = focusBatchId !== "all" && focusBatchId !== "unassigned" ? allSortedBatches.find((batch) => batch.id === focusBatchId) : null;
+  const scopedVisibleBatches = manualBatch && !visibleBatches.length ? [manualBatch] : visibleBatches;
   const visibleUnassigned = focusBatchId === "unassigned" ? unassignedOrders : [];
-  const allVisibleOrders = [...visibleBatches.flatMap((batch) => orders.filter((order) => order.batchId === batch.id)), ...visibleUnassigned];
+  const allVisibleOrders = [...scopedVisibleBatches.flatMap((batch) => orders.filter((order) => order.batchId === batch.id)), ...visibleUnassigned];
   const activeWorkflowOrders = allVisibleOrders.filter((order) => packingWorkflowStatuses.some((status) => status.id === normalizeOrderStatus(order.status)));
   const progress = flightOrderProgress(allVisibleOrders);
-  const activeBatch = sortedBatches.find((batch) => batch.id === focusBatchId);
+  const activeBatch = allSortedBatches.find((batch) => batch.id === focusBatchId);
   const scopeTitle =
     focusBatchId === "all"
       ? `${sortedBatches.length || 0} chuyến gần nhất`
@@ -2790,6 +2795,20 @@ function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, o
               {batch.code || batch.id}
             </button>
           ))}
+          {olderBatches.length > 0 && (
+            <select
+              className="buying-scope-select"
+              value={olderBatches.some((batch) => batch.id === focusBatchId) ? focusBatchId : ""}
+              onChange={(event) => event.target.value && setFocusBatchId(event.target.value)}
+            >
+              <option value="">Chọn chuyến cũ hơn</option>
+              {olderBatches.map((batch) => (
+                <option value={batch.id} key={batch.id}>
+                  {batch.code || batch.id} · Bay {batch.departure || "-"} · Về VN {batch.arrival || "-"}
+                </option>
+              ))}
+            </select>
+          )}
           {unassignedOrders.length > 0 && (
             <button className={focusBatchId === "unassigned" ? "active" : ""} type="button" onClick={() => setFocusBatchId("unassigned")}>
               Chưa xếp chuyến ({unassignedOrders.length})
@@ -3333,7 +3352,9 @@ function FlightOrderRow({ order, openOrder, updateOrderStatus, canEditOrder }) {
 }
 
 function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrder }) {
-  const managedStatuses = new Set(["sent_vn", "received_vn", "delivered"]);
+  const [arrivalYearFilter, setArrivalYearFilter] = React.useState("all");
+  const [arrivalBatchFilter, setArrivalBatchFilter] = React.useState("latest");
+  const managedStatuses = new Set(["received_vn", "delivered"]);
   const managedOrders = orders
     .filter((order) => {
       const status = normalizeOrderStatus(order.status);
@@ -3360,7 +3381,9 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrde
     { received: 0, shipped: 0, paid: 0, remaining: 0 }
   );
   const batchGroups = [
-    ...sortedFlightBatches(batches).map((batch) => ({
+    ...sortedFlightBatches(batches)
+      .sort((a, b) => String(b.arrival || b.departure || "").localeCompare(String(a.arrival || a.departure || "")))
+      .map((batch) => ({
       id: batch.id,
       title: batch.code || batch.id,
       subtitle: `Về VN ${batch.arrival || "-"} · ${batch.route || "Australia -> Việt Nam"}`,
@@ -3375,6 +3398,22 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrde
       orders: managedOrders.filter((order) => !findOrderBatch(batches, order))
     }
   ].filter((group) => group.orders.length);
+  const arrivalYears = [...new Set(batchGroups.map((group) => String(group.batch?.arrival || group.batch?.departure || group.orders[0]?.receivedVnDate || "Chưa rõ").slice(0, 4)))].filter(Boolean);
+  const yearFilteredGroups = arrivalYearFilter === "all"
+    ? batchGroups
+    : batchGroups.filter((group) => String(group.batch?.arrival || group.batch?.departure || group.orders[0]?.receivedVnDate || "Chưa rõ").slice(0, 4) === arrivalYearFilter);
+  const visibleBatchGroups =
+    arrivalBatchFilter === "latest"
+      ? yearFilteredGroups.slice(0, 1)
+      : arrivalBatchFilter === "all"
+        ? yearFilteredGroups
+        : yearFilteredGroups.filter((group) => group.id === arrivalBatchFilter);
+
+  React.useEffect(() => {
+    if (arrivalBatchFilter !== "latest" && arrivalBatchFilter !== "all" && !yearFilteredGroups.some((group) => group.id === arrivalBatchFilter)) {
+      setArrivalBatchFilter("latest");
+    }
+  }, [arrivalBatchFilter, yearFilteredGroups]);
 
   function groupStats(groupOrders) {
     return groupOrders.reduce(
@@ -3464,8 +3503,29 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrde
           </div>
           <Truck size={18} />
         </div>
+        <div className="arrival-filter-panel">
+          <label>
+            Năm
+            <select value={arrivalYearFilter} onChange={(event) => { setArrivalYearFilter(event.target.value); setArrivalBatchFilter("latest"); }}>
+              <option value="all">Tất cả năm</option>
+              {arrivalYears.map((year) => <option value={year} key={year}>{year === "Chưa" ? "Chưa rõ năm" : `Năm ${year}`}</option>)}
+            </select>
+          </label>
+          <label>
+            Chuyến bay
+            <select value={arrivalBatchFilter} onChange={(event) => setArrivalBatchFilter(event.target.value)}>
+              <option value="latest">Chuyến gần nhất</option>
+              <option value="all">Tất cả chuyến trong filter</option>
+              {yearFilteredGroups.map((group) => (
+                <option value={group.id} key={group.id}>
+                  {group.title} · {group.orders.length} đơn
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <div className="arrival-flight-groups">
-          {batchGroups.map((group) => {
+          {visibleBatchGroups.map((group) => {
             const stats = groupStats(group.orders);
             return (
               <section className="arrival-flight-section" key={group.id}>
@@ -3547,7 +3607,8 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrde
             );
           })}
         </div>
-        {!managedOrders.length && <EmptyState title="Chưa có hàng đã về" body="Các đơn đang về VN, đã nhận ở VN hoặc đã giao khách sẽ tự hiện ở đây theo từng chuyến bay." />}
+        {managedOrders.length > 0 && !visibleBatchGroups.length && <EmptyState title="Không có chuyến phù hợp filter" body="Đổi năm hoặc chọn Tất cả chuyến trong filter để xem lại các đợt hàng đã về." />}
+        {!managedOrders.length && <EmptyState title="Chưa có hàng đã về" body="Khi chuyến được đánh dấu đầu VN đã nhận hàng, các đơn trong chuyến sẽ tự hiện ở đây để kiểm kho, giao khách và tick thu đủ tiền." />}
       </section>
     </div>
   );

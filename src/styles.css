@@ -1592,6 +1592,17 @@ tbody tr.split-bill-row {
   border-color: #274d7a;
 }
 
+.buying-scope-select {
+  flex: 0 0 220px;
+  min-height: 36px;
+  padding: 0 10px;
+  color: #554d42;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.12);
+  border-radius: 8px;
+  font-weight: 900;
+}
+
 .buying-progress-strip {
   display: grid;
   grid-column: 1 / -1;
@@ -2188,6 +2199,34 @@ tbody tr.split-bill-row {
 
 .post-arrival-panel {
   overflow: hidden;
+}
+
+.arrival-filter-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 10px;
+  padding: 12px 14px 0;
+}
+
+.arrival-filter-panel label {
+  display: grid;
+  gap: 5px;
+  color: #6f675c;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.arrival-filter-panel select {
+  min-height: 40px;
+  padding: 0 11px;
+  color: #211d17;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.12);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 900;
+  text-transform: none;
 }
 
 .arrival-flight-groups {
@@ -3147,6 +3186,11 @@ tbody tr.split-bill-row {
     min-height: 40px;
   }
 
+  .buying-scope-select {
+    flex-basis: 100%;
+    min-height: 40px;
+  }
+
   .buying-progress-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     overflow-x: visible;
@@ -3214,6 +3258,11 @@ tbody tr.split-bill-row {
 
   .arrival-flight-groups {
     padding: 10px;
+  }
+
+  .arrival-filter-panel {
+    grid-template-columns: 1fr;
+    padding: 10px 10px 0;
   }
 
   .arrival-flight-head {
