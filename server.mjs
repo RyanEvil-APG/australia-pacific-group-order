@@ -10,6 +10,9 @@ const PORT = Number(process.env.PORT || 5288);
 const STATE_ID = "production";
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const STATE_CACHE_TTL_MS = 12 * 1000;
+const CHEMIST_ALGOLIA_APP_ID = "42NP1V2I98";
+const CHEMIST_ALGOLIA_SEARCH_KEY = "3ce54af79eae81a18144a7aa7ee10ec2";
+const CHEMIST_ALGOLIA_INDEX = "prod_cwr-cw-au_products_en";
 const localDataDir = path.join(__dirname, "data");
 const localDataPath = path.join(localDataDir, "apg-state.json");
 let cachedState = null;
@@ -637,6 +640,78 @@ function chemistProductId(target) {
   return target.pathname.match(/\/(?:buy|pi)\/(\d+)/i)?.[1] || "";
 }
 
+function valueFromLocale(value) {
+  if (!value || typeof value !== "object") return value;
+  return value.en ?? value["en-AU"] ?? Object.values(value).find((item) => typeof item === "string") ?? "";
+}
+
+function titleQueryFromChemistUrl(target) {
+  const slug = target.pathname.match(/\/buy\/\d+(?:[/-]([^/?#]+))?/i)?.[1] || "";
+  return slug.replace(/-/g, " ").trim();
+}
+
+async function fetchChemistAlgoliaPreview(target, signal) {
+  if (!isChemistWarehouseUrl(target)) return {};
+  const productId = chemistProductId(target);
+  const query = titleQueryFromChemistUrl(target);
+  if (!productId && !query) return {};
+  const params = new URLSearchParams({
+    query,
+    hitsPerPage: "8",
+    attributesToRetrieve: [
+      "attributes",
+      "calculatedPrice",
+      "images",
+      "name",
+      "prices",
+      "slug"
+    ].join(",")
+  });
+  const response = await fetch(`https://${CHEMIST_ALGOLIA_APP_ID}-dsn.algolia.net/1/indexes/*/queries`, {
+    method: "POST",
+    signal,
+    headers: {
+      "content-type": "application/json",
+      "x-algolia-application-id": CHEMIST_ALGOLIA_APP_ID,
+      "x-algolia-api-key": CHEMIST_ALGOLIA_SEARCH_KEY
+    },
+    body: JSON.stringify({
+      requests: [
+        {
+          indexName: CHEMIST_ALGOLIA_INDEX,
+          params: params.toString()
+        }
+      ]
+    })
+  }).catch(() => null);
+  if (!response?.ok) return {};
+  const data = await response.json().catch(() => null);
+  const hits = data?.results?.[0]?.hits || [];
+  const hit =
+    hits.find((item) => String(item?.attributes?.["cwr-epid"] || "") === productId) ||
+    hits.find((item) => String(valueFromLocale(item?.slug) || "").startsWith(`${productId}-`)) ||
+    hits[0];
+  if (!hit) return {};
+
+  const algoliaPrice = priceFromValue(hit?.attributes?.["cwr-algolia-price"]);
+  const calculatedPrice = priceFromValue(hit?.calculatedPrice?.amount ?? hit?.calculatedPrice);
+  const prices = Array.isArray(hit?.prices) ? hit.prices : [];
+  const listedPrice = prices.map((item) => priceFromValue(item?.value?.centAmount ?? item?.centAmount ?? item?.amount)).find((item) => item !== null);
+  const rawPriceAud =
+    algoliaPrice !== null ? (algoliaPrice >= 100 ? algoliaPrice / 100 : algoliaPrice) :
+    calculatedPrice !== null ? (calculatedPrice >= 100 ? calculatedPrice / 100 : calculatedPrice) :
+    listedPrice !== null ? (listedPrice >= 100 ? listedPrice / 100 : listedPrice) :
+    null;
+  const imageUrl = imageFromValue(hit?.images?.map((item) => item?.url));
+  return {
+    title: valueFromLocale(hit?.name) || "",
+    siteName: "Chemist Warehouse",
+    imageUrl,
+    rawPriceAud,
+    unitWeightKg: weightKgFromGrams(hit?.attributes?.["cwr-weight"])
+  };
+}
+
 function chemistImageCandidates(target) {
   const productId = chemistProductId(target);
   if (!productId) return [];
@@ -789,12 +864,14 @@ async function fetchProductPreview(rawUrl) {
       };
     }
     const html = await readResponseTextLimited(response);
+    const chemistAlgolia = await fetchChemistAlgoliaPreview(target, controller.signal);
     const title =
       readMeta(html, ["og:title", "twitter:title"]) ||
       readTitle(html);
     const siteName = readMeta(html, ["og:site_name", "application-name"]) || target.hostname.replace(/^www\./, "");
     const imageUrl = resolveImageUrl(
       [
+        { value: chemistAlgolia.imageUrl, hint: "chemist algolia product image" },
         { value: shopifyPreview.imageUrl, hint: "shopify product image" },
         { value: readMeta(html, ["og:image:secure_url", "og:image", "twitter:image", "twitter:image:src"]), hint: "social meta image" },
         { value: readJsonLdImage(html), hint: "json ld product image" },
@@ -805,14 +882,14 @@ async function fetchProductPreview(rawUrl) {
       ],
       target
     );
-    const rawPriceAud = readProductPrice(html) ?? shopifyPreview.rawPriceAud ?? await fetchChemistFallbackPrice(target);
-    const unitWeightKg = readProductWeightKg(html);
+    const rawPriceAud = readProductPrice(html) ?? shopifyPreview.rawPriceAud ?? chemistAlgolia.rawPriceAud ?? await fetchChemistFallbackPrice(target);
+    const unitWeightKg = readProductWeightKg(html) ?? chemistAlgolia.unitWeightKg ?? null;
     const priceAud = roundProductAud(rawPriceAud);
     return {
       ok: true,
       url: target.toString(),
-      title: title || chemistFallback?.title || "",
-      siteName: siteName || chemistFallback?.siteName || target.hostname.replace(/^www\./, ""),
+      title: title || chemistAlgolia.title || chemistFallback?.title || "",
+      siteName: siteName || chemistAlgolia.siteName || chemistFallback?.siteName || target.hostname.replace(/^www\./, ""),
       imageUrl,
       rawPriceAud,
       priceAud,
@@ -820,17 +897,18 @@ async function fetchProductPreview(rawUrl) {
     };
   } catch (error) {
     if (chemistFallback?.imageUrl) {
-      const rawPriceAud = await fetchChemistFallbackPrice(target);
+      const chemistAlgolia = await fetchChemistAlgoliaPreview(target).catch(() => ({}));
+      const rawPriceAud = chemistAlgolia.rawPriceAud ?? await fetchChemistFallbackPrice(target);
       const priceAud = roundProductAud(rawPriceAud);
       return {
         ok: true,
         url: target.toString(),
-        title: chemistFallback.title,
-        siteName: chemistFallback.siteName,
-        imageUrl: chemistFallback.imageUrl,
+        title: chemistAlgolia.title || chemistFallback.title,
+        siteName: chemistAlgolia.siteName || chemistFallback.siteName,
+        imageUrl: chemistAlgolia.imageUrl || chemistFallback.imageUrl,
         rawPriceAud,
         priceAud,
-        unitWeightKg: null
+        unitWeightKg: chemistAlgolia.unitWeightKg ?? null
       };
     }
     throw error;
