@@ -1498,7 +1498,7 @@ tbody tr.split-bill-row {
 
 .packing-card-stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -1794,6 +1794,49 @@ tbody tr.split-bill-row {
   background: #fffdf8;
   border: 1px solid rgba(33, 29, 23, 0.09);
   border-radius: 8px;
+}
+
+.batch-weight-panel {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+  padding: 12px;
+  background: #fffdf8;
+  border: 1px solid rgba(33, 29, 23, 0.09);
+  border-radius: 8px;
+}
+
+.batch-weight-panel div {
+  padding: 10px;
+  background: #f8f3ea;
+  border-radius: 8px;
+}
+
+.batch-weight-panel div.live {
+  background: #eaf5ff;
+  box-shadow: inset 4px 0 0 #274d7a;
+}
+
+.batch-weight-panel span,
+.batch-weight-panel small {
+  display: block;
+  color: #746c61;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.batch-weight-panel strong {
+  display: block;
+  margin-top: 5px;
+  color: #211d17;
+  font-size: 1.02rem;
+  font-weight: 950;
+}
+
+.batch-weight-panel small {
+  margin-top: 4px;
+  line-height: 1.35;
 }
 
 .batch-modal-checklist-head {
@@ -2923,6 +2966,10 @@ tbody tr.split-bill-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .batch-weight-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .packing-list-grid {
     grid-template-columns: 1fr;
     padding: 10px;
@@ -3166,6 +3213,10 @@ tbody tr.split-bill-row {
   }
 
   .auto-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .batch-weight-panel {
     grid-template-columns: 1fr;
   }
 }

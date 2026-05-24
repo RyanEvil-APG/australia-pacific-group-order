@@ -123,6 +123,7 @@ const emptyBatch = {
   status: "open",
   capacityKg: 0,
   freightAud: 0,
+  actualWeightKg: 0,
   exchangeRate,
   note: ""
 };
@@ -584,6 +585,56 @@ function orderFinance(order) {
   };
 }
 
+function batchOrderRows(batch, orders) {
+  return orders.filter((order) => order.batchId === batch?.id);
+}
+
+function batchEstimatedWeightKg(batch, orders) {
+  return batchOrderRows(batch, orders).reduce((sum, order) => sum + orderTotalWeightKg(order), 0);
+}
+
+function batchActualWeightKg(batch) {
+  return Math.max(0, money(batch?.actualWeightKg));
+}
+
+function batchChargeWeightKg(batch, orders) {
+  const actualWeight = batchActualWeightKg(batch);
+  return actualWeight > 0 ? actualWeight : batchEstimatedWeightKg(batch, orders);
+}
+
+function batchFinanceSummary(batch, orders) {
+  const batchOrders = batchOrderRows(batch, orders);
+  const estimatedWeightKg = batchOrders.reduce((sum, order) => sum + orderTotalWeightKg(order), 0);
+  const actualWeightKg = batchActualWeightKg(batch);
+  const chargeWeightKg = actualWeightKg > 0 ? actualWeightKg : estimatedWeightKg;
+  const freightAudPerKg = money(batch?.freightAud);
+  const rate = money(batch?.exchangeRate) || exchangeRate;
+  const actualAirFreightAud = chargeWeightKg * freightAudPerKg;
+  const actualAirFreightVnd = actualAirFreightAud * rate;
+  const estimatedAirFreightVnd = batchOrders.reduce((sum, order) => sum + orderFinance(order).airFreightVnd, 0);
+  const revenue = batchOrders.reduce((sum, order) => sum + orderFinance(order).totalThuVnd, 0);
+  const deposit = batchOrders.reduce((sum, order) => sum + orderFinance(order).depositVnd, 0);
+  const remaining = batchOrders.reduce((sum, order) => sum + orderFinance(order).remainingVnd, 0);
+  const orderCost = batchOrders.reduce((sum, order) => sum + orderFinance(order).totalCostVnd, 0);
+  return {
+    batchOrders,
+    estimatedWeightKg,
+    actualWeightKg,
+    chargeWeightKg,
+    avgActualWeightKg: actualWeightKg > 0 && batchOrders.length ? actualWeightKg / batchOrders.length : 0,
+    freightAudPerKg,
+    rate,
+    actualAirFreightAud,
+    actualAirFreightVnd,
+    estimatedAirFreightVnd,
+    revenue,
+    deposit,
+    remaining,
+    orderCost,
+    adjustedCost: orderCost - estimatedAirFreightVnd + actualAirFreightVnd
+  };
+}
+
 function readStoredState(key, fallback, normalize) {
   if (typeof window === "undefined") return fallback;
   try {
@@ -820,6 +871,7 @@ function normalizeBatchCodes(batches) {
     const pricedBatch = {
       ...batch,
       freightAud: Math.max(0, Number(batch?.freightAud || 0)),
+      actualWeightKg: Math.max(0, Number(batch?.actualWeightKg || 0)),
       exchangeRate: Math.max(0, Number(batch?.exchangeRate || exchangeRate))
     };
     if (!pricedBatch?.departure) return pricedBatch;
@@ -1311,6 +1363,7 @@ function App() {
       code,
       status: normalizeBatchStatus(draft.status),
       freightAud: Math.max(0, Number(draft.freightAud || 0)),
+      actualWeightKg: Math.max(0, Number(draft.actualWeightKg || 0)),
       exchangeRate: Math.max(0, Number(draft.exchangeRate || exchangeRate))
     };
     setBatches((current) => {
@@ -2358,9 +2411,10 @@ function PackingListSummary({ title, eyebrow, batches, orders, openBuyingCheckli
   const activeBatches = sortedFlightBatches(batches).filter((batch) => !batchHasArrived(batch));
   const summaryBatches = activeBatches
     .map((batch) => {
-      const batchOrders = orders.filter((order) => order.batchId === batch.id);
+      const batchOrders = batchOrderRows(batch, orders);
       const progress = flightOrderProgress(batchOrders);
-      return { batch, progress };
+      const finance = batchFinanceSummary(batch, orders);
+      return { batch, progress, finance };
     })
     .filter(({ progress }) => progress.total > 0 || activeBatches.length <= 6)
     .slice(0, 6);
@@ -2379,7 +2433,7 @@ function PackingListSummary({ title, eyebrow, batches, orders, openBuyingCheckli
         </button>
       </div>
       <div className="packing-list-grid">
-        {summaryBatches.map(({ batch, progress }) => (
+        {summaryBatches.map(({ batch, progress, finance }) => (
           <button className="packing-list-card" type="button" key={batch.id} onClick={() => openBuyingChecklist(batch.id)}>
             <div className="packing-card-head">
               <strong>{batch.code || batch.id}</strong>
@@ -2391,6 +2445,8 @@ function PackingListSummary({ title, eyebrow, batches, orders, openBuyingCheckli
               <span>Đã mua <strong>{progress.purchased}</strong></span>
               <span>Đã gửi <strong>{progress.sentVn}</strong></span>
               <span>Đã nhận <strong>{progress.receivedVn}</strong></span>
+              <span>Kg chốt <strong>{kg(finance.chargeWeightKg)}</strong></span>
+              <span>Chi cước <strong>{compactVnd(finance.actualAirFreightVnd)}</strong></span>
             </div>
           </button>
         ))}
@@ -2725,19 +2781,22 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
   const unassignedOrders = orders.filter((order) => !order.batchId && normalizeOrderStatus(order.status) !== "cancelled");
   const totals = activeBatches.reduce(
     (sum, batch) => {
-      const batchOrders = orders.filter((order) => order.batchId === batch.id);
-      const progress = flightOrderProgress(batchOrders);
-      sum.orders += batchOrders.length;
+      const finance = batchFinanceSummary(batch, orders);
+      const progress = flightOrderProgress(finance.batchOrders);
+      sum.orders += finance.batchOrders.length;
       sum.waitingBuy += progress.waitingBuy;
       sum.purchased += progress.purchased;
       sum.sentVn += progress.sentVn;
       sum.freightAud += money(batch.freightAud);
-      sum.remaining += batchOrders.reduce((orderSum, order) => orderSum + orderFinance(order).remainingVnd, 0);
-      sum.revenue += batchOrders.reduce((orderSum, order) => orderSum + orderFinance(order).totalThuVnd, 0);
-      sum.cost += batchOrders.reduce((orderSum, order) => orderSum + orderFinance(order).totalCostVnd, 0);
+      sum.estimatedWeightKg += finance.estimatedWeightKg;
+      sum.chargeWeightKg += finance.chargeWeightKg;
+      sum.actualAirFreightVnd += finance.actualAirFreightVnd;
+      sum.remaining += finance.remaining;
+      sum.revenue += finance.revenue;
+      sum.cost += finance.adjustedCost;
       return sum;
     },
-    { orders: 0, waitingBuy: 0, purchased: 0, sentVn: 0, freightAud: 0, remaining: 0, revenue: 0, cost: 0 }
+    { orders: 0, waitingBuy: 0, purchased: 0, sentVn: 0, freightAud: 0, estimatedWeightKg: 0, chargeWeightKg: 0, actualAirFreightVnd: 0, remaining: 0, revenue: 0, cost: 0 }
   );
 
   const renderFlightRows = (rows, emptyTitle, emptyBody) => (
@@ -2756,10 +2815,9 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
         <tbody>
           {rows.map((batch) => {
             const status = normalizeBatchStatus(batch.status);
-            const batchOrders = orders.filter((order) => order.batchId === batch.id);
+            const finance = batchFinanceSummary(batch, orders);
+            const batchOrders = finance.batchOrders;
             const progress = flightOrderProgress(batchOrders);
-            const revenue = batchOrders.reduce((sum, order) => sum + orderFinance(order).totalThuVnd, 0);
-            const remaining = batchOrders.reduce((sum, order) => sum + orderFinance(order).remainingVnd, 0);
             return (
               <tr key={batch.id} onClick={() => openBatch(batch)}>
                 <td data-label="Chuyến">
@@ -2784,9 +2842,10 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
                   </div>
                 </td>
                 <td data-label="Tài chính" className="finance-cell">
-                  <strong>{vnd(revenue)}</strong>
-                  <span>Cước bay {aud(batch.freightAud)}</span>
-                  <span className="money-due">Còn thu {vnd(remaining)}</span>
+                  <strong>{vnd(finance.revenue)}</strong>
+                  <span>Kg chốt {kg(finance.chargeWeightKg)}kg · {aud(batch.freightAud)}/kg</span>
+                  <span>Chi cước {vnd(finance.actualAirFreightVnd)}</span>
+                  <span className="money-due">Còn thu {vnd(finance.remaining)}</span>
                 </td>
                 <td data-label="Ghi chú">{batch.note}</td>
               </tr>
@@ -2831,6 +2890,8 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
         <Kpi label="Chuyến đang mở" value={String(activeBatches.length)} icon={Plane} />
         <Kpi label="Order đã link" value={String(totals.orders)} icon={ClipboardList} />
         <Kpi label="Chờ mua" value={String(totals.waitingBuy)} icon={PackageCheck} tone={totals.waitingBuy ? "warning" : "success"} />
+        <Kpi label="Kg chốt / ước" value={`${kg(totals.chargeWeightKg)} / ${kg(totals.estimatedWeightKg)}kg`} icon={Boxes} />
+        <Kpi label="Chi cước bay" value={vnd(totals.actualAirFreightVnd)} icon={CreditCard} />
         {canSeeProfit && <Kpi label="Lãi chuyến đang mở" value={vnd(totals.revenue - totals.cost)} icon={Gem} tone="success" />}
       </section>
 
@@ -2868,6 +2929,7 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
                 <th>Chuyến</th>
                 <th>Ngày về VN</th>
                 <th>Order</th>
+                <th>Kg/cước</th>
                 <th>Đã ship</th>
                 <th>Thu đủ</th>
                 <th>Còn phải thu</th>
@@ -2875,18 +2937,19 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
             </thead>
             <tbody>
               {arrivedBatches.map((batch) => {
-                const batchOrders = orders.filter((order) => order.batchId === batch.id);
+                const finance = batchFinanceSummary(batch, orders);
+                const batchOrders = finance.batchOrders;
                 const shipped = batchOrders.filter((order) => order.customerShipped || normalizeOrderStatus(order.status) === "delivered").length;
                 const paid = batchOrders.filter((order) => order.paidInFull || orderFinance(order).remainingVnd <= 0).length;
-                const remaining = batchOrders.reduce((sum, order) => sum + orderFinance(order).remainingVnd, 0);
                 return (
                   <tr key={batch.id} onClick={() => openBatch(batch)}>
                     <td data-label="Chuyến"><strong>{batch.code || batch.id}</strong><span>{batch.route}</span></td>
                     <td data-label="Ngày về VN"><strong>{batch.arrival || "-"}</strong><span>Bay {batch.departure || "-"}</span></td>
                     <td data-label="Order">{batchOrders.length}</td>
+                    <td data-label="Kg/cước"><strong>{kg(finance.chargeWeightKg)}kg</strong><span>{vnd(finance.actualAirFreightVnd)}</span></td>
                     <td data-label="Đã ship">{shipped}/{batchOrders.length}</td>
                     <td data-label="Thu đủ">{paid}/{batchOrders.length}</td>
-                    <td data-label="Còn phải thu" className="finance-cell"><strong>{vnd(remaining)}</strong></td>
+                    <td data-label="Còn phải thu" className="finance-cell"><strong>{vnd(finance.remaining)}</strong></td>
                   </tr>
                 );
               })}
@@ -3220,13 +3283,11 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrde
 
 function CashflowView({ orders, batches, transactions, openTransaction, openOrder, canSeeProfit }) {
   const totalsByBatch = batches.map((batch) => {
-    const batchOrders = orders.filter((order) => order.batchId === batch.id);
+    const finance = batchFinanceSummary(batch, orders);
     return {
       batch,
-      revenue: batchOrders.reduce((sum, order) => sum + orderFinance(order).totalThuVnd, 0),
-      deposit: batchOrders.reduce((sum, order) => sum + orderFinance(order).depositVnd, 0),
-      remaining: batchOrders.reduce((sum, order) => sum + orderFinance(order).remainingVnd, 0),
-      cost: batchOrders.reduce((sum, order) => sum + orderFinance(order).totalCostVnd, 0)
+      ...finance,
+      cost: finance.adjustedCost
     };
   });
 
@@ -3251,17 +3312,21 @@ function CashflowView({ orders, batches, transactions, openTransaction, openOrde
                 <th>Tổng thu / Doanh số</th>
                 <th>Đã cọc / đã thu</th>
                 <th>Số tiền còn lại phải thu của khách</th>
+                <th>Kg chốt / chia đều</th>
+                <th>Chi cước bay</th>
                 <th>Tổng chi phí</th>
                 {canSeeProfit && <th>Lãi dự kiến</th>}
               </tr>
             </thead>
             <tbody>
-              {totalsByBatch.map(({ batch, revenue, deposit, remaining, cost }) => (
+              {totalsByBatch.map(({ batch, revenue, deposit, remaining, chargeWeightKg, avgActualWeightKg, actualAirFreightVnd, cost }) => (
                 <tr key={batch.id}>
                   <td data-label="Đợt"><strong>{batch.code || batch.id}</strong></td>
                   <td data-label="Tổng thu / Doanh số">{vnd(revenue)}</td>
                   <td data-label="Đã cọc / đã thu">{vnd(deposit)}</td>
                   <td data-label="Số tiền còn lại phải thu"><span className="money-due">{vnd(remaining)}</span></td>
+                  <td data-label="Kg chốt / chia đều"><strong>{kg(chargeWeightKg)}kg</strong><span>{avgActualWeightKg > 0 ? `${kg(avgActualWeightKg)}kg/đơn` : "Chưa nhập kg cân thực tế"}</span></td>
+                  <td data-label="Chi cước bay"><strong>{vnd(actualAirFreightVnd)}</strong><span>{kg(chargeWeightKg)}kg x {aud(batch.freightAud)}</span></td>
                   <td data-label="Tổng chi phí">{vnd(cost)}</td>
                   {canSeeProfit && <td data-label="Lãi dự kiến">{vnd(revenue - cost)}</td>}
                 </tr>
@@ -3727,9 +3792,10 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, ses
 }
 
 function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderStatus, canEditOrder, save, remove, close }) {
-  const batchOrders = orders.filter((order) => order.batchId === draft.id);
+  const batchOrders = batchOrderRows(draft, orders);
   const progress = flightOrderProgress(batchOrders);
-  const totalWeight = batchOrders.reduce((sum, order) => sum + orderTotalWeightKg(order), 0);
+  const finance = batchFinanceSummary(draft, orders);
+  const totalWeight = finance.estimatedWeightKg;
   function updateFlightDate(field, value) {
     const nextDraft = { ...draft, [field]: value };
     setDraft({
@@ -3758,6 +3824,10 @@ function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderSt
             </select>
           </Field>
           <Field label="Sức chứa kg"><input type="number" value={draft.capacityKg} onChange={(event) => setDraft({ ...draft, capacityKg: event.target.value })} /></Field>
+          <Field label="Tổng kg cân thực tế cả chuyến">
+            <input type="number" min="0" step="0.01" inputMode="decimal" value={draft.actualWeightKg ?? 0} onChange={(event) => setDraft({ ...draft, actualWeightKg: event.target.value })} />
+            <span className="field-hint">Nhập số kg chốt sau khi cân thùng/gửi hàng từ Úc. Nếu để 0, app dùng tổng kg ước tính từ các đơn.</span>
+          </Field>
           <Field label="Cước bay AUD/kg">
             <input type="number" min="0" step="0.01" value={draft.freightAud} onChange={(event) => setDraft({ ...draft, freightAud: event.target.value })} />
             <span className="field-hint">Lưu chuyến sẽ tự áp cước này vào toàn bộ đơn thuộc chuyến.</span>
@@ -3768,6 +3838,25 @@ function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderSt
           </Field>
           <Field label="Note" wide><textarea value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} /></Field>
         </div>
+        <section className="batch-weight-panel">
+          <div>
+            <span>Kg ước tính từ đơn</span>
+            <strong>{kg(finance.estimatedWeightKg)}kg</strong>
+          </div>
+          <div className={finance.actualWeightKg > 0 ? "live" : ""}>
+            <span>Kg chốt chuyến</span>
+            <strong>{kg(finance.chargeWeightKg)}kg</strong>
+          </div>
+          <div>
+            <span>Chia bình quân</span>
+            <strong>{finance.avgActualWeightKg > 0 ? `${kg(finance.avgActualWeightKg)}kg/đơn` : "-"}</strong>
+          </div>
+          <div>
+            <span>Chi cước bay</span>
+            <strong>{vnd(finance.actualAirFreightVnd)}</strong>
+            <small>{kg(finance.chargeWeightKg)}kg x {aud(finance.freightAudPerKg)} x {vnd(finance.rate)}</small>
+          </div>
+        </section>
         <section className="batch-modal-checklist">
           <div className="batch-modal-checklist-head">
             <div>
