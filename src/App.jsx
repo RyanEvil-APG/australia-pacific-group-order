@@ -389,6 +389,25 @@ function batchHasArrived(batch) {
   return normalizeBatchStatus(batch?.status) === "arrived" || (arrival !== null && todayTime !== null && arrival < todayTime);
 }
 
+function batchHasDeparted(batch, refDate = today()) {
+  const departure = dateTime(batch?.departure);
+  const refTime = dateTime(refDate) ?? dateTime(today()) ?? Date.now();
+  return departure !== null && departure < refTime;
+}
+
+function batchFlightTime(batch) {
+  return dateTime(batch?.departure) ?? dateTime(batch?.cutoff) ?? dateTime(batch?.arrival) ?? Number.MAX_SAFE_INTEGER;
+}
+
+function upcomingFlightBatches(batches, limit = 3, refDate = today()) {
+  return sortedFlightBatches(batches)
+    .filter((batch) => !batchHasArrived(batch))
+    .filter((batch) => !batchHasDeparted(batch, refDate))
+    .filter((batch) => normalizeBatchStatus(batch.status) !== "arrived")
+    .sort((a, b) => batchFlightTime(a) - batchFlightTime(b))
+    .slice(0, limit);
+}
+
 function batchIsInTransit(batch) {
   return !batchHasArrived(batch) && normalizeBatchStatus(batch?.status) === "shipping";
 }
@@ -407,11 +426,12 @@ function autoBatchForOrder(batches, orderDate = today()) {
       const departure = dateTime(batch.departure);
       const arrival = dateTime(batch.arrival);
       const nextTime = [cutoff, departure, arrival].filter((time) => time !== null && time >= refTime).sort((a, b) => a - b)[0] ?? null;
-      const primaryTime = (cutoff !== null && cutoff >= refTime ? cutoff : null) ?? nextTime;
+      const primaryTime = (departure !== null && departure >= refTime ? departure : null) ?? nextTime;
       const status = batch.status || "open";
-      return { batch, status, primaryTime, nextTime };
+      return { batch, status, primaryTime, nextTime, departure };
     })
-    .filter((item) => item.nextTime !== null && !blockedStatuses.has(item.status));
+    .filter((item) => item.nextTime !== null && !blockedStatuses.has(item.status))
+    .filter((item) => item.departure === null || item.departure >= refTime);
 
   const preferred = scored
     .filter((item) => preferredStatuses.has(item.status))
@@ -422,7 +442,7 @@ function autoBatchForOrder(batches, orderDate = today()) {
 }
 
 function batchWorkflowTime(batch) {
-  return dateTime(batch?.cutoff) ?? dateTime(batch?.departure) ?? dateTime(batch?.arrival) ?? 0;
+  return dateTime(batch?.departure) ?? dateTime(batch?.cutoff) ?? dateTime(batch?.arrival) ?? 0;
 }
 
 function nextOpenBatchAfter(batches, currentBatch, orderDate = today()) {
@@ -1983,7 +2003,7 @@ function FilterBar({ query, setQuery, statusFilter, setStatusFilter, batchFilter
 
 function OverviewView(props) {
   const { totals, orders, filteredOrders, batches, accounts, openOrder, openBatch, openBuyingChecklist, openAfterArrival, updateOrderStatus, canEditOrder, canSeeProfit } = props;
-  const nearestOverviewBatch = autoBatchForOrder(batches, today()) ?? sortedFlightBatches(batches).find((batch) => !batchHasArrived(batch)) ?? null;
+  const nearestOverviewBatch = autoBatchForOrder(batches, today()) ?? upcomingFlightBatches(batches, 1)[0] ?? null;
   const overviewBatches = nearestOverviewBatch ? [nearestOverviewBatch] : [];
   const overviewFilteredOrders = nearestOverviewBatch ? filteredOrders.filter((order) => order.batchId === nearestOverviewBatch.id) : [];
   const reminders = nearestOverviewBatch ? afterArrivalReminders(orders, batches).filter((reminder) => reminder.batch?.id === nearestOverviewBatch.id) : [];
@@ -2101,7 +2121,7 @@ function OverviewView(props) {
 }
 
 function OverviewBuyingBoard({ batches, orders, openOrder, openBuyingChecklist, updateOrderStatus, canEditOrder }) {
-  const nearestBatch = autoBatchForOrder(batches, today()) ?? sortedFlightBatches(batches)[0];
+  const nearestBatch = autoBatchForOrder(batches, today()) ?? upcomingFlightBatches(batches, 1)[0];
   const waitingOrders = nearestBatch
     ? orders.filter((order) => order.batchId === nearestBatch.id && normalizeOrderStatus(order.status) === "waiting_buy")
     : [];
@@ -2524,7 +2544,7 @@ const packingWorkflowStatuses = [
 ];
 
 function PackingListSummary({ title, eyebrow, batches, orders, openBuyingChecklist }) {
-  const activeBatches = sortedFlightBatches(batches).filter((batch) => !batchHasArrived(batch));
+  const activeBatches = upcomingFlightBatches(batches, 3);
   const summaryBatches = activeBatches
     .map((batch) => {
       const batchOrders = batchOrderRows(batch, orders);
@@ -2686,17 +2706,22 @@ function StockoutsView({ batches, orders, openOrder, updateOrderStatus, moveOutO
 }
 
 function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, openOrder, openBatch, updateOrderStatus, canEditOrder }) {
-  const sortedBatches = sortedFlightBatches(batches);
+  const sortedBatches = upcomingFlightBatches(batches, 3);
   const unassignedOrders = orders.filter((order) => !order.batchId && normalizeOrderStatus(order.status) !== "cancelled");
+  React.useEffect(() => {
+    if (focusBatchId !== "all" && focusBatchId !== "unassigned" && !sortedBatches.some((batch) => batch.id === focusBatchId)) {
+      setFocusBatchId("all");
+    }
+  }, [focusBatchId, setFocusBatchId, sortedBatches]);
   const visibleBatches = focusBatchId === "all" || focusBatchId === "unassigned" ? sortedBatches : sortedBatches.filter((batch) => batch.id === focusBatchId);
-  const visibleUnassigned = focusBatchId === "all" || focusBatchId === "unassigned" ? unassignedOrders : [];
+  const visibleUnassigned = focusBatchId === "unassigned" ? unassignedOrders : [];
   const allVisibleOrders = [...visibleBatches.flatMap((batch) => orders.filter((order) => order.batchId === batch.id)), ...visibleUnassigned];
   const activeWorkflowOrders = allVisibleOrders.filter((order) => packingWorkflowStatuses.some((status) => status.id === normalizeOrderStatus(order.status)));
   const progress = flightOrderProgress(allVisibleOrders);
   const activeBatch = sortedBatches.find((batch) => batch.id === focusBatchId);
   const scopeTitle =
     focusBatchId === "all"
-      ? "Tất cả chuyến"
+      ? `${sortedBatches.length || 0} chuyến gần nhất`
       : focusBatchId === "unassigned"
         ? "Chưa xếp chuyến"
         : activeBatch?.code || activeBatch?.id || "Chuyến đang chọn";
@@ -2733,7 +2758,7 @@ function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, o
           </span>
         </div>
         <div className="buying-scope-list">
-          <button className={focusBatchId === "all" ? "active" : ""} type="button" onClick={() => setFocusBatchId("all")}>Tất cả</button>
+          <button className={focusBatchId === "all" ? "active" : ""} type="button" onClick={() => setFocusBatchId("all")}>3 chuyến gần nhất</button>
           {sortedBatches.map((batch) => (
             <button className={focusBatchId === batch.id ? "active" : ""} type="button" key={batch.id} onClick={() => setFocusBatchId(batch.id)}>
               {batch.code || batch.id}
@@ -2979,7 +3004,7 @@ function FlightsViewLegacy({ batches, orders, openBatch, openOrder, openBuyingCh
 function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklist, updateOrderStatus, canEditOrder, canSeeProfit }) {
   const [flightFilter, setFlightFilter] = React.useState("nearest");
   const sortedBatches = sortedFlightBatches(batches);
-  const activeBatches = sortedBatches.filter((batch) => !batchHasArrived(batch));
+  const activeBatches = upcomingFlightBatches(batches, 3);
   const arrivedBatches = sortedBatches
     .filter((batch) => batchHasArrived(batch))
     .sort((a, b) => String(b.arrival || b.departure || "").localeCompare(String(a.arrival || a.departure || "")));
