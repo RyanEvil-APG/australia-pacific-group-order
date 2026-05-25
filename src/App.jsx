@@ -102,6 +102,7 @@ const emptyOrder = {
   shippingAud: 0,
   intlShippingAud: 0,
   unitWeightKg: 0,
+  productWeightSource: "",
   weightKg: 0,
   finalWeightRateVnd: defaultFinalWeightRateVnd,
   exchangeRate,
@@ -299,6 +300,7 @@ function normalizeOrder(order) {
   const quantity = Math.max(1, money(order?.quantity) || 1);
   const rawUnitWeightKg = money(order?.unitWeightKg);
   const unitWeightKg = roundWeightUpKg(rawUnitWeightKg > 0 ? rawUnitWeightKg : money(order?.weightKg) / quantity);
+  const productWeightSource = order?.productWeightSource || (unitWeightKg > 0 ? "manual" : "");
   return {
     ...order,
     productUrl: order?.productUrl ?? "",
@@ -308,6 +310,7 @@ function normalizeOrder(order) {
     productImageSource: productImageUrl ? (order?.productImageSource || "auto") : "",
     quantity,
     unitWeightKg,
+    productWeightSource,
     weightKg: unitWeightKg * quantity,
     outOfStockAt: order?.outOfStockAt || "",
     outOfStockDate: order?.outOfStockDate || "",
@@ -634,6 +637,12 @@ function orderUnitWeightKg(order) {
   const quantity = Math.max(1, money(order?.quantity) || 1);
   const unitWeightKg = money(order?.unitWeightKg);
   return roundWeightUpKg(unitWeightKg > 0 ? unitWeightKg : money(order?.weightKg) / quantity);
+}
+
+function isManualWeightLocked(order) {
+  const unitWeightKg = orderUnitWeightKg(order);
+  if (unitWeightKg <= 0) return false;
+  return order?.productWeightSource === "manual" || !order?.productWeightSource;
 }
 
 function orderTotalWeightKg(order) {
@@ -1549,6 +1558,7 @@ function App() {
       productImageSource: draft.productImageUrl ? draft.productImageSource : (chemistFallback?.imageUrl ? "auto" : draft.productImageSource),
       quantity,
       unitWeightKg,
+      productWeightSource: unitWeightKg > 0 ? (draft.productWeightSource || "manual") : "",
       weightKg: totalWeightKg,
       ...(
         batchHasPricing(findOrderBatch(batches, draft))
@@ -4169,6 +4179,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
   const [previewError, setPreviewError] = React.useState("");
   const lastPreviewUrlRef = React.useRef("");
   const catalogMatch = findProductCatalogMatch(productCatalog, draft);
+  const manualWeightLocked = isManualWeightLocked(draft);
   const generateCurrentOrderCode = () => {
     setDraft({
       ...draft,
@@ -4188,6 +4199,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
     const match = findProductCatalogMatch(productCatalog, item);
     if (!match) return { match: null, patch: {} };
     const quantity = Math.max(1, Number(current.quantity || 1));
+    const manualWeightLocked = isManualWeightLocked(current);
     const sourceWeight = money(options.unitWeightKg) > 0 ? roundWeightUpKg(options.unitWeightKg) : roundWeightUpKg(match.unitWeightKg);
     const sourceAud = money(options.aud) > 0 ? money(options.aud) : money(match.aud);
     const patch = {
@@ -4195,8 +4207,9 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
       source: current.source || options.siteName || match.source || current.source
     };
     if (sourceAud > 0 && (money(current.aud) <= 0 || options.forcePrice)) patch.aud = sourceAud;
-    if (sourceWeight > 0 && (money(current.unitWeightKg) <= 0 || options.forceWeight)) {
+    if (sourceWeight > 0 && !manualWeightLocked && (money(current.unitWeightKg) <= 0 || options.forceWeight)) {
       patch.unitWeightKg = sourceWeight;
+      patch.productWeightSource = "auto";
       patch.weightKg = sourceWeight * quantity;
     }
     if (current.productImageSource !== "manual" && !current.productImageUrl && match.productImageUrl) {
@@ -4245,8 +4258,9 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
         const nextAud = roundProductAud(data.priceAud ?? data.rawPriceAud);
         const catalogAud = money(matched?.aud);
         const nextUnitWeight = roundWeightUpKg(data.unitWeightKg) || roundWeightUpKg(matched?.unitWeightKg);
+        const manualWeightLocked = isManualWeightLocked(current);
         const shouldApplyPrice = nextAud > 0 || (catalogAud > 0 && money(current.aud) <= 0);
-        const shouldApplyWeight = nextUnitWeight > 0 && (force || money(current.unitWeightKg) <= 0 || previousPreviewUrl !== url);
+        const shouldApplyWeight = nextUnitWeight > 0 && !manualWeightLocked && (force || money(current.unitWeightKg) <= 0 || previousPreviewUrl !== url);
         const quantity = Math.max(1, Number(current.quantity || 1));
         return {
           ...current,
@@ -4254,6 +4268,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
           source: current.source || data.siteName || matched?.source || current.source,
           aud: shouldApplyPrice ? (nextAud || catalogAud) : current.aud,
           unitWeightKg: shouldApplyWeight ? nextUnitWeight : current.unitWeightKg,
+          productWeightSource: shouldApplyWeight ? "auto" : current.productWeightSource,
           weightKg: shouldApplyWeight ? nextUnitWeight * quantity : current.weightKg,
           productImageUrl: current.productImageSource === "manual" ? current.productImageUrl : (data.imageUrl || current.productImageUrl),
           productImageSource: current.productImageSource === "manual" ? "manual" : (data.imageUrl ? "auto" : current.productImageSource)
@@ -4262,6 +4277,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
       const roundedPreviewAud = roundProductAud(data.priceAud ?? data.rawPriceAud);
       const matchedProduct = findProductCatalogMatch(productCatalog, { productUrl: url, product: data.title || "" });
       const previewWeightKg = roundWeightUpKg(data.unitWeightKg) || roundWeightUpKg(matchedProduct?.unitWeightKg);
+      const previewWeightLocked = isManualWeightLocked(draft);
       const hasPrice = roundedPreviewAud > 0;
       setPreviewStatus(data.imageUrl || hasPrice ? "done" : "error");
       setPreviewError(
@@ -4272,7 +4288,11 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
             : "Đã nhận shop/link nhưng site này không trả ảnh hoặc giá rõ ràng. Upload ảnh tay và nhập giá tay để chắc nhất."
       );
       if (previewWeightKg > 0) {
-        setPreviewError((current) => current.includes("Kg/sp") ? current : `${current} Kg/sp ${kg(previewWeightKg)}kg.`);
+        setPreviewError((current) => current.includes("Kg/sp")
+          ? current
+          : previewWeightLocked
+            ? `${current} Kg link ${kg(previewWeightKg)}kg, nhưng đang giữ kg nhập tay.`
+            : `${current} Kg/sp ${kg(previewWeightKg)}kg.`);
       }
     } catch (error) {
       const chemistFallback = chemistPreviewFromUrl(url);
@@ -4400,7 +4420,12 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
                     });
                   }}
                 />
-                <button type="button" disabled={!looksLikeProductUrl(draft.productUrl) || previewStatus === "loading"} onClick={() => fetchProductPreview(draft.productUrl, true)}>
+                <button
+                  type="button"
+                  disabled={!looksLikeProductUrl(draft.productUrl) || previewStatus === "loading"}
+                  title={manualWeightLocked ? "Kg nhập tay đang khóa. Xóa kg về 0 nếu muốn lấy kg từ link." : "Lấy lại ảnh, giá và kg từ link."}
+                  onClick={() => fetchProductPreview(draft.productUrl, true)}
+                >
                   <RefreshCw size={15} /> Lấy lại
                 </button>
               </div>
@@ -4417,6 +4442,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
                 <div className="product-media-controls">
                   <strong>{draft.productImageUrl ? (draft.productImageSource === "manual" ? "Ảnh upload tay" : "Ảnh lấy từ link") : "Chưa có ảnh sản phẩm"}</strong>
                   <span>{previewStatus === "loading" ? "Đang tự đọc link, ảnh và giá sản phẩm..." : previewError || "Dán link là app tự đọc ảnh và giá; nút Lấy lại chỉ dùng khi muốn refresh."}</span>
+                  {manualWeightLocked && <span className="product-catalog-hit">Kg/sp đang khóa theo nhập tay: {kg(orderUnitWeightKg(draft))}kg. App sẽ không tự đè kg này.</span>}
                   {catalogMatch && (
                     <span className="product-catalog-hit">
                       Dữ liệu sản phẩm đã lưu: {catalogMatch.ordersCount} đơn · {money(catalogMatch.unitWeightKg) > 0 ? `${kg(catalogMatch.unitWeightKg)}kg/sp` : "thiếu kg"} · {money(catalogMatch.aud) > 0 ? audPrice(catalogMatch.aud) : "chưa có giá"}
@@ -4470,14 +4496,24 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
                 value={draft.unitWeightKg ?? 0}
                 onChange={(event) => {
                   const nextUnitWeight = event.target.value;
-                  setDraft({ ...draft, unitWeightKg: nextUnitWeight, weightKg: Math.max(0, Number(nextUnitWeight || 0)) * Math.max(1, Number(draft.quantity || 1)) });
+                  setDraft({
+                    ...draft,
+                    unitWeightKg: nextUnitWeight,
+                    productWeightSource: money(nextUnitWeight) > 0 ? "manual" : "",
+                    weightKg: Math.max(0, Number(nextUnitWeight || 0)) * Math.max(1, Number(draft.quantity || 1))
+                  });
                 }}
                 onBlur={() => {
                   const nextUnitWeight = roundWeightUpKg(draft.unitWeightKg);
-                  setDraft({ ...draft, unitWeightKg: nextUnitWeight, weightKg: nextUnitWeight * Math.max(1, Number(draft.quantity || 1)) });
+                  setDraft({
+                    ...draft,
+                    unitWeightKg: nextUnitWeight,
+                    productWeightSource: nextUnitWeight > 0 ? "manual" : "",
+                    weightKg: nextUnitWeight * Math.max(1, Number(draft.quantity || 1))
+                  });
                 }}
               />
-              <span className="field-hint">Kg/sp luôn làm tròn lên nấc 0.1kg. Ví dụ 0.06kg -&gt; 0.1kg, 1.21kg -&gt; 1.3kg.</span>
+              <span className="field-hint">Kg/sp nhập tay sẽ được khóa, app không tự đè khi mở lại link. Xóa kg về 0 nếu muốn app tự lấy lại từ link.</span>
             </Field>
             <Field label="Chuyến bay">
               <div className="flight-auto-picker">
