@@ -1944,7 +1944,11 @@ function App() {
           />
         )}
 
-        {activeView === "products" && <ProductsView productCatalog={productCatalog} openOrder={openOrder} />}
+        {activeView === "products" && (
+          <ProductTabBoundary>
+            <ProductsView productCatalog={productCatalog} openOrder={openOrder} />
+          </ProductTabBoundary>
+        )}
         {activeView === "customers" && <CustomersView customers={customers} orders={orders} openCustomer={openCustomer} openOrder={openOrder} />}
         {activeView === "stock" && <StockView inventory={inventory} orders={orders} batches={batches} openStock={openStock} openOrder={openOrder} />}
         {activeView === "flights" && (
@@ -2051,6 +2055,38 @@ function Kpi({ label, value, icon: Icon, tone }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+class ProductTabBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error) {
+    console.error("Product tab crashed", error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="panel product-tab-error">
+          <div className="panel-title">
+            <div>
+              <span className="eyebrow">Product data</span>
+              <h2>Dữ liệu sản phẩm đang cần làm sạch</h2>
+            </div>
+          </div>
+          <EmptyState title="Không làm sập app nữa" body="Tab này gặp dữ liệu sản phẩm cũ bị sai định dạng. Bấm refresh sau khi bản sửa deploy xong, app sẽ tự dựng lại bảng từ đơn hàng." />
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 function orderIsInVn(order, batch) {
@@ -2546,10 +2582,10 @@ function ProductsView({ productCatalog, openOrder }) {
       </div>
 
       <div className="product-insight-grid">
-        <MetricCard icon={Database} label="Sản phẩm đã lưu" value={catalogRows.length} />
-        <MetricCard icon={PackageCheck} label="Tổng số lượng đã bán" value={formatter.format(totalQuantity)} />
-        <MetricCard icon={TriangleAlert} label="Sản phẩm thiếu kg" value={missingWeightCount} tone={missingWeightCount ? "warning" : "success"} />
-        <MetricCard icon={BarChart3} label="Bán chạy nhất" value={displayText(topProducts[0]?.product, "-")} tone="success" />
+        <Kpi icon={Database} label="Sản phẩm đã lưu" value={catalogRows.length} />
+        <Kpi icon={PackageCheck} label="Tổng số lượng đã bán" value={formatter.format(totalQuantity)} />
+        <Kpi icon={TriangleAlert} label="Sản phẩm thiếu kg" value={missingWeightCount} tone={missingWeightCount ? "warning" : "success"} />
+        <Kpi icon={BarChart3} label="Bán chạy nhất" value={displayText(topProducts[0]?.product, "-")} tone="success" />
       </div>
 
       <div className="product-rank-grid">

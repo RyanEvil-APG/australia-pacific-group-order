@@ -1353,6 +1353,10 @@ tbody tr.split-bill-row {
   border-radius: 8px;
 }
 
+.product-tab-error {
+  padding-bottom: 12px;
+}
+
 .tier-card,
 .status-tile {
   min-height: 86px;
