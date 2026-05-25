@@ -457,7 +457,7 @@ function readChemistNextDataPrice(html) {
 function weightKgFromGrams(value) {
   const grams = Number(value);
   if (!Number.isFinite(grams) || grams <= 0 || grams > 50000) return null;
-  return Math.ceil((grams / 1000 - Number.EPSILON) * 100) / 100;
+  return Math.ceil((grams / 1000 - Number.EPSILON) * 10) / 10;
 }
 
 function readChemistNextDataWeightKg(html) {

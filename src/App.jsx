@@ -246,7 +246,7 @@ function kg(value) {
 function roundWeightUpKg(value) {
   const amount = Number(value);
   if (!Number.isFinite(amount) || amount <= 0) return 0;
-  return Math.ceil((amount - Number.EPSILON) * 100) / 100;
+  return Math.ceil((amount - Number.EPSILON) * 10) / 10;
 }
 
 function today() {
@@ -4465,7 +4465,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
               <input
                 type="number"
                 min="0"
-                step="0.01"
+                step="0.1"
                 inputMode="decimal"
                 value={draft.unitWeightKg ?? 0}
                 onChange={(event) => {
@@ -4477,6 +4477,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
                   setDraft({ ...draft, unitWeightKg: nextUnitWeight, weightKg: nextUnitWeight * Math.max(1, Number(draft.quantity || 1)) });
                 }}
               />
+              <span className="field-hint">Kg/sp luôn làm tròn lên nấc 0.1kg. Ví dụ 0.06kg -&gt; 0.1kg, 1.21kg -&gt; 1.3kg.</span>
             </Field>
             <Field label="Chuyến bay">
               <div className="flight-auto-picker">
@@ -4631,13 +4632,13 @@ function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderSt
             <input
               type="number"
               min="0"
-              step="0.01"
+              step="0.1"
               inputMode="decimal"
               value={draft.actualWeightKg ?? 0}
               onChange={(event) => setDraft({ ...draft, actualWeightKg: event.target.value })}
               onBlur={() => setDraft({ ...draft, actualWeightKg: roundWeightUpKg(draft.actualWeightKg) })}
             />
-            <span className="field-hint">Nhập số kg chốt sau khi cân thùng/gửi hàng từ Úc. Nếu để 0, app dùng tổng kg ước tính từ các đơn.</span>
+            <span className="field-hint">Nhập số kg chốt sau khi cân thùng/gửi hàng từ Úc. App làm tròn lên nấc 0.1kg; nếu để 0, app dùng tổng kg ước tính từ các đơn.</span>
           </Field>
           <Field label="Cước bay AUD/kg">
             <input type="number" min="0" step="0.01" value={draft.freightAud} onChange={(event) => setDraft({ ...draft, freightAud: event.target.value })} />
