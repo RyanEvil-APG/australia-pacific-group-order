@@ -104,6 +104,11 @@ const emptyOrder = {
   unitWeightKg: 0,
   productWeightSource: "",
   weightKg: 0,
+  vnActualWeightKg: 0,
+  vnActualShippingCost: 0,
+  weightCheckedBy: "",
+  weightCheckedAt: "",
+  reconciledAt: "",
   finalWeightRateVnd: defaultFinalWeightRateVnd,
   exchangeRate,
   extraFeeVnd: 0,
@@ -190,12 +195,14 @@ const navItems = [
 ];
 
 const orderStatuses = [
-  { id: "waiting_buy", label: "Chờ mua" },
+  { id: "waiting_buy", label: "Pending Purchase" },
   { id: "out_of_stock", label: "Hết hàng" },
-  { id: "purchased", label: "Đã mua" },
-  { id: "sent_vn", label: "Đã gửi về VN" },
-  { id: "received_vn", label: "Đã nhận ở VN" },
-  { id: "delivered", label: "Đã giao khách" },
+  { id: "purchased", label: "Purchased" },
+  { id: "sent_vn", label: "Shipping to VN" },
+  { id: "waiting_vn_weight", label: "Waiting VN Weight" },
+  { id: "weight_checked", label: "Weight Checked" },
+  { id: "reconciled", label: "Reconciled" },
+  { id: "delivered", label: "Closed" },
   { id: "cancelled", label: "Hủy" }
 ];
 
@@ -268,7 +275,8 @@ function normalizeOrderStatus(status) {
     buying: "waiting_buy",
     waiting_send: "purchased",
     shipping: "sent_vn",
-    arrived_vn: "received_vn"
+    arrived_vn: "waiting_vn_weight",
+    received_vn: "waiting_vn_weight"
   };
   const nextStatus = legacyMap[status] ?? status;
   return orderStatuses.some((item) => item.id === nextStatus) ? nextStatus : "waiting_buy";
@@ -312,6 +320,11 @@ function normalizeOrder(order) {
     unitWeightKg,
     productWeightSource,
     weightKg: unitWeightKg * quantity,
+    vnActualWeightKg: roundWeightUpKg(order?.vnActualWeightKg || 0),
+    vnActualShippingCost: Math.max(0, money(order?.vnActualShippingCost)),
+    weightCheckedBy: order?.weightCheckedBy || "",
+    weightCheckedAt: order?.weightCheckedAt || "",
+    reconciledAt: order?.reconciledAt || "",
     outOfStockAt: order?.outOfStockAt || "",
     outOfStockDate: order?.outOfStockDate || "",
     outOfStockBatchId: order?.outOfStockBatchId || "",
@@ -524,7 +537,7 @@ function compareOrdersForDesk(a, b, batches) {
   const bBatch = findOrderBatch(batches, b);
   const timeDiff = orderDeskSortTime(b, bBatch) - orderDeskSortTime(a, aBatch);
   if (timeDiff !== 0) return timeDiff;
-  const statusRank = { waiting_buy: 0, out_of_stock: 1, purchased: 2, sent_vn: 3, received_vn: 4, delivered: 8, cancelled: 9 };
+  const statusRank = { waiting_buy: 0, out_of_stock: 1, purchased: 2, sent_vn: 3, waiting_vn_weight: 4, weight_checked: 5, reconciled: 6, delivered: 8, cancelled: 9 };
   const rankDiff = (statusRank[normalizeOrderStatus(a.status)] ?? 5) - (statusRank[normalizeOrderStatus(b.status)] ?? 5);
   if (rankDiff !== 0) return rankDiff;
   return String(b.id || "").localeCompare(String(a.id || ""));
@@ -548,14 +561,14 @@ function orderWithBatchWorkflow(order, batch) {
   const orderStatus = normalizeOrderStatus(pricedOrder.status);
   const lockedStatuses = new Set(["cancelled", "delivered", "out_of_stock"]);
 
-  if (batchStatus === "shipping" && !lockedStatuses.has(orderStatus) && orderStatus !== "sent_vn" && orderStatus !== "received_vn") {
+  if (batchStatus === "shipping" && !lockedStatuses.has(orderStatus) && !["sent_vn", "waiting_vn_weight", "weight_checked", "reconciled"].includes(orderStatus)) {
     return normalizeOrder({ ...pricedOrder, status: "sent_vn", updatedAt: new Date().toISOString() });
   }
 
-  if (batchStatus === "arrived" && !lockedStatuses.has(orderStatus) && orderStatus !== "received_vn") {
+  if (batchStatus === "arrived" && !lockedStatuses.has(orderStatus) && !["waiting_vn_weight", "weight_checked", "reconciled"].includes(orderStatus)) {
     return normalizeOrder({
       ...pricedOrder,
-      status: "received_vn",
+      status: "waiting_vn_weight",
       receivedVnDate: pricedOrder.receivedVnDate || today(),
       vnStockLocation: pricedOrder.vnStockLocation || "Kho VN",
       updatedAt: new Date().toISOString()
@@ -658,20 +671,32 @@ function orderFinance(order, billingWeightOverrideKg = null) {
   const quantity = Math.max(1, money(order.quantity) || 1);
   const unitAud = money(order.aud);
   const unitWeightKg = orderUnitWeightKg(order);
-  const totalWeightKg = orderTotalWeightKg(order);
-  const billingWeightKg = billingWeightOverrideKg !== null ? Math.max(0, money(billingWeightOverrideKg)) : totalWeightKg;
+  const quotedWeightKg = orderTotalWeightKg(order);
+  const totalWeightKg = quotedWeightKg;
+  const billingWeightKg = billingWeightOverrideKg !== null ? Math.max(0, money(billingWeightOverrideKg)) : quotedWeightKg;
+  const vnActualWeightKg = roundWeightUpKg(order.vnActualWeightKg || 0);
+  const hasVnWeight = vnActualWeightKg > 0;
   const goodsAud = unitAud * quantity;
   const goodsVnd = goodsAud * rate;
   const domesticShippingVnd = money(order.shippingAud) * rate;
   const purchaseFeeVnd = goodsVnd < orderFeeThresholdVnd ? lowValueBuyingFeeVnd : goodsVnd * highValueBuyingFeeRate;
   const airFreightAud = billingWeightKg * money(order.intlShippingAud);
   const airFreightVnd = airFreightAud * rate;
+  const vnActualShippingCost = Math.max(0, money(order.vnActualShippingCost));
+  const estimatedActualShippingCostVnd = hasVnWeight ? vnActualWeightKg * money(order.intlShippingAud) * rate : airFreightVnd;
+  const actualShippingCostVnd = vnActualShippingCost > 0 ? vnActualShippingCost : estimatedActualShippingCostVnd;
   const finalWeightRateVnd = money(order.finalWeightRateVnd) || defaultFinalWeightRateVnd;
   const finalWeightChargeVnd = billingWeightKg * finalWeightRateVnd;
-  const totalCostVnd = goodsVnd + domesticShippingVnd + purchaseFeeVnd + airFreightVnd + money(order.extraFeeVnd);
+  const expectedTotalCostVnd = goodsVnd + domesticShippingVnd + purchaseFeeVnd + airFreightVnd + money(order.extraFeeVnd);
+  const totalCostVnd = goodsVnd + domesticShippingVnd + purchaseFeeVnd + actualShippingCostVnd + money(order.extraFeeVnd);
   const suggestedTotalThuVnd = goodsVnd + domesticShippingVnd + purchaseFeeVnd + finalWeightChargeVnd + money(order.extraFeeVnd);
   const totalThuVnd = money(order.totalThuVnd) || suggestedTotalThuVnd;
   const depositVnd = money(order.depositVnd);
+  const weightVarianceKg = hasVnWeight ? vnActualWeightKg - quotedWeightKg : 0;
+  const weightVarianceRate = hasVnWeight && quotedWeightKg > 0 ? weightVarianceKg / quotedWeightKg : 0;
+  const shippingCostVarianceVnd = actualShippingCostVnd - airFreightVnd;
+  const actualWeightChargeProfitVnd = finalWeightChargeVnd - actualShippingCostVnd;
+  const hasShippingLoss = hasVnWeight && actualWeightChargeProfitVnd < 0;
 
   return {
     rate,
@@ -679,6 +704,11 @@ function orderFinance(order, billingWeightOverrideKg = null) {
     unitAud,
     unitWeightKg,
     totalWeightKg,
+    quotedWeightKg,
+    vnActualWeightKg,
+    hasVnWeight,
+    weightVarianceKg,
+    weightVarianceRate,
     billingWeightKg,
     weightNeedsCheck: unitWeightKg <= 0,
     goodsAud,
@@ -687,14 +717,19 @@ function orderFinance(order, billingWeightOverrideKg = null) {
     purchaseFeeVnd,
     airFreightAud,
     airFreightVnd,
+    actualShippingCostVnd,
+    shippingCostVarianceVnd,
     finalWeightRateVnd,
     finalWeightChargeVnd,
     suggestedTotalThuVnd,
-    weightProfitVnd: finalWeightChargeVnd - airFreightVnd,
+    weightProfitVnd: actualWeightChargeProfitVnd,
+    hasShippingLoss,
+    expectedTotalCostVnd,
     totalCostVnd,
     totalThuVnd,
     depositVnd,
     remainingVnd: Math.max(totalThuVnd - depositVnd, 0),
+    estimatedProfitVnd: totalThuVnd - expectedTotalCostVnd,
     profitVnd: totalThuVnd - totalCostVnd
   };
 }
@@ -735,13 +770,16 @@ function batchFinanceSummary(batch, orders) {
   const batchOrders = batchOrderRows(batch, orders);
   const billableOrders = batchBillableOrderRows(batch, orders);
   const estimatedWeightKg = billableOrders.reduce((sum, order) => sum + orderTotalWeightKg(order), 0);
-  const actualWeightKg = batchActualWeightKg(batch);
-  const chargeWeightKg = actualWeightKg > 0 ? actualWeightKg : estimatedWeightKg;
   const freightAudPerKg = money(batch?.freightAud);
   const rate = money(batch?.exchangeRate) || exchangeRate;
-  const actualAirFreightAud = chargeWeightKg * freightAudPerKg;
-  const actualAirFreightVnd = actualAirFreightAud * rate;
   const estimatedAirFreightVnd = billableOrders.reduce((sum, order) => sum + orderFinance(order).airFreightVnd, 0);
+  const orderActualWeightKg = billableOrders.reduce((sum, order) => sum + roundWeightUpKg(order.vnActualWeightKg || 0), 0);
+  const actualWeightKg = batchActualWeightKg(batch) || orderActualWeightKg;
+  const chargeWeightKg = actualWeightKg > 0 ? actualWeightKg : estimatedWeightKg;
+  const actualAirFreightVnd = billableOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).actualShippingCostVnd, 0);
+  const actualAirFreightAud = rate > 0 ? actualAirFreightVnd / rate : 0;
+  const missingVnWeight = billableOrders.filter((order) => roundWeightUpKg(order.vnActualWeightKg || 0) <= 0).length;
+  const shippingLossOrders = billableOrders.filter((order) => orderFinanceForBatch(order, batch, orders).hasShippingLoss).length;
   const revenue = batchOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).totalThuVnd, 0);
   const deposit = batchOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).depositVnd, 0);
   const remaining = batchOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).remainingVnd, 0);
@@ -758,11 +796,13 @@ function batchFinanceSummary(batch, orders) {
     actualAirFreightAud,
     actualAirFreightVnd,
     estimatedAirFreightVnd,
+    missingVnWeight,
+    shippingLossOrders,
     revenue,
     deposit,
     remaining,
     orderCost,
-    adjustedCost: actualWeightKg > 0 ? orderCost - estimatedAirFreightVnd + actualAirFreightVnd : orderCost
+    adjustedCost: orderCost
   };
 }
 
@@ -843,8 +883,20 @@ function mergeProductCatalogItem(existing, order, batch, orders) {
   const quantity = Math.max(1, money(order.quantity) || finance.quantity || 1);
   const status = normalizeOrderStatus(order.status);
   const isSoldSignal = !["cancelled", "out_of_stock"].includes(status);
+  const hasActualWeight = finance.hasVnWeight && isSoldSignal;
+  const actualUnitWeightKg = hasActualWeight ? finance.vnActualWeightKg / quantity : 0;
   const orderTime = orderCreatedTime(order) || dateTime(order.orderDate) || 0;
   const existingTime = existing?.lastOrderTime || 0;
+  const actualUnitWeightSamples = [
+    ...(Array.isArray(existing?.actualUnitWeightSamples) ? existing.actualUnitWeightSamples : []),
+    ...(hasActualWeight ? [{ orderId: order.id, time: orderTime, unitWeightKg: actualUnitWeightKg }] : [])
+  ]
+    .filter((sample) => money(sample.unitWeightKg) > 0)
+    .sort((a, b) => money(b.time) - money(a.time))
+    .slice(0, 20);
+  const avgRecentActualUnitWeightKg = actualUnitWeightSamples.length
+    ? roundWeightUpKg(actualUnitWeightSamples.reduce((sum, sample) => sum + money(sample.unitWeightKg), 0) / actualUnitWeightSamples.length)
+    : 0;
   const next = {
     ...(existing || {}),
     key: existing?.key || productIdentityKey(order),
@@ -860,6 +912,9 @@ function mergeProductCatalogItem(existing, order, batch, orders) {
     quantitySold: (existing?.quantitySold || 0) + (isSoldSignal ? quantity : 0),
     revenueVnd: (existing?.revenueVnd || 0) + (isSoldSignal ? finance.totalThuVnd : 0),
     totalWeightKg: (existing?.totalWeightKg || 0) + (isSoldSignal ? orderTotalWeightKg(order) : 0),
+    actualUnitWeightSamples,
+    actualWeightSamples: actualUnitWeightSamples.length,
+    avgActualUnitWeightKg: avgRecentActualUnitWeightKg,
     missingWeightCount: (existing?.missingWeightCount || 0) + (money(order.unitWeightKg) <= 0 ? 1 : 0),
     lastOrderDate: orderTime >= existingTime ? (order.orderDate || existing?.lastOrderDate || "") : existing?.lastOrderDate,
     lastOrderTime: Math.max(existingTime, orderTime),
@@ -876,6 +931,11 @@ function mergeProductCatalogItem(existing, order, batch, orders) {
     if (money(order.aud) > 0) next.aud = money(order.aud);
     if (money(order.unitWeightKg) > 0) next.unitWeightKg = roundWeightUpKg(order.unitWeightKg);
   }
+
+  next.weightSuggestionText =
+    next.actualWeightSamples >= 3 && next.unitWeightKg > 0 && next.avgActualUnitWeightKg > next.unitWeightKg * 1.15
+      ? `Estimated weight hiện thấp hơn thực tế. Trung bình ${kg(next.avgActualUnitWeightKg)}kg/sp từ ${next.actualWeightSamples} đơn gần nhất, nên cân nhắc update estimatedWeightKg.`
+      : "";
 
   return next;
 }
@@ -1560,6 +1620,11 @@ function App() {
       unitWeightKg,
       productWeightSource: unitWeightKg > 0 ? (draft.productWeightSource || "manual") : "",
       weightKg: totalWeightKg,
+      vnActualWeightKg: roundWeightUpKg(draft.vnActualWeightKg || 0),
+      vnActualShippingCost: Math.max(0, Number(draft.vnActualShippingCost || 0)),
+      weightCheckedBy: draft.weightCheckedBy || "",
+      weightCheckedAt: draft.weightCheckedAt || "",
+      reconciledAt: draft.reconciledAt || "",
       ...(
         batchHasPricing(findOrderBatch(batches, draft))
           ? batchPricingPatch(findOrderBatch(batches, draft))
@@ -1603,7 +1668,16 @@ function App() {
           patch.outOfStockBatchId = order.batchId || order.outOfStockBatchId || "";
           patch.customerWantsNextBatch = false;
         }
-        if (nextStatus === "received_vn" && !order.receivedVnDate) patch.receivedVnDate = today();
+        if (nextStatus === "waiting_vn_weight" && !order.receivedVnDate) patch.receivedVnDate = today();
+        if (nextStatus === "weight_checked") {
+          if (!order.receivedVnDate) patch.receivedVnDate = today();
+          if (!order.weightCheckedAt) patch.weightCheckedAt = today();
+        }
+        if (nextStatus === "reconciled") {
+          if (!order.receivedVnDate) patch.receivedVnDate = today();
+          if (!order.weightCheckedAt) patch.weightCheckedAt = today();
+          if (!order.reconciledAt) patch.reconciledAt = today();
+        }
         if (nextStatus === "delivered") {
           patch.customerShipped = true;
           if (!order.customerShippedDate) patch.customerShippedDate = today();
@@ -1642,10 +1716,28 @@ function App() {
   }
 
   function updateAfterArrivalOrder(id, patch) {
+    const operationalKeys = new Set([
+      "status",
+      "receivedVnDate",
+      "vnStockLocation",
+      "vnStockChecked",
+      "vnStockNote",
+      "customerShipped",
+      "customerShippedDate",
+      "paidInFull",
+      "paidInFullDate",
+      "depositVnd",
+      "vnActualWeightKg",
+      "vnActualShippingCost",
+      "weightCheckedBy",
+      "weightCheckedAt",
+      "reconciledAt"
+    ]);
     setOrders((current) =>
       current.map((order) => {
         if (order.id !== id) return order;
-        if (!canEditOrder(order)) return order;
+        const safeOpsPatch = Object.keys(patch || {}).every((key) => operationalKeys.has(key));
+        if (!canEditOrder(order) && !safeOpsPatch) return order;
         return normalizeOrder({ ...order, ...patch });
       })
     );
@@ -2019,6 +2111,8 @@ function App() {
           <AfterArrivalView
             orders={orders}
             batches={batches}
+            accounts={accounts}
+            currentAccountId={currentAccountId}
             openOrder={openOrder}
             updateOrder={updateAfterArrivalOrder}
             canEditOrder={canEditOrder}
@@ -2144,7 +2238,7 @@ class ProductTabBoundary extends React.Component {
 function orderIsInVn(order, batch) {
   const status = normalizeOrderStatus(order.status);
   const batchArrived = Boolean(batch?.arrival && String(batch.arrival) <= today());
-  return Boolean(order.receivedVnDate || ["received_vn", "delivered"].includes(status) || (status === "sent_vn" && batchArrived));
+  return Boolean(order.receivedVnDate || ["waiting_vn_weight", "weight_checked", "reconciled", "delivered"].includes(status) || (status === "sent_vn" && batchArrived));
 }
 
 function afterArrivalReminders(orders, batches) {
@@ -2157,6 +2251,12 @@ function afterArrivalReminders(orders, batches) {
       const reminders = [];
       if (!order.receivedVnDate && status === "sent_vn") {
         reminders.push({ type: "stock", label: "Cần xác nhận về VN", tone: "warning", order, batch, detail: `Dự kiến về ${batch?.arrival || "-"}` });
+      }
+      if (order.receivedVnDate && !order.vnActualWeightKg && !["delivered", "cancelled"].includes(status)) {
+        reminders.push({ type: "weight", label: "Chưa có cân VN", tone: "warning", order, batch, detail: "Cần nhập kg thực tế sau khi hàng về" });
+      }
+      if (finance.hasShippingLoss) {
+        reminders.push({ type: "ship-loss", label: "Lỗ phí ship", tone: "urgent", order, batch, detail: `Lỗ ${vnd(Math.abs(finance.weightProfitVnd))} do cân VN cao` });
       }
       if (!order.vnStockChecked && !order.customerShipped && status !== "delivered") {
         reminders.push({ type: "stock", label: "Cần kiểm kho", tone: "warning", order, batch, detail: order.vnStockLocation || "Chưa có vị trí kho" });
@@ -2535,6 +2635,8 @@ function ProductCell({ order, batch = null, orders = [] }) {
         <span>SL: {finance.quantity} · {kg(finance.unitWeightKg)}kg/sp · Tổng {kg(finance.totalWeightKg)}kg</span>
         {usesSharedFlightWeight && <em className="billing-weight-badge">Tinh cuoc {kg(finance.billingWeightKg)}kg</em>}
         {finance.weightNeedsCheck && <em className="kg-missing-badge">Can tim kg san pham</em>}
+        {finance.hasShippingLoss && <em className="kg-missing-badge">Lỗ phí ship</em>}
+        {normalizeOrderStatus(order.status) === "waiting_vn_weight" && <em className="billing-weight-badge">Chờ cân VN</em>}
         {order.splitBill && (
           <em className="split-bill-badge">Tách bill riêng</em>
         )}
@@ -2610,10 +2712,12 @@ function ProductsView({ productCatalog, openOrder }) {
     const text = normalizeProductText(`${product.product} ${product.source} ${product.productUrl}`);
     const matchesQuery = !normalizedQuery || text.includes(normalizedQuery);
     const missingWeight = money(product.unitWeightKg) <= 0;
+    const hasWeightSuggestion = Boolean(product.weightSuggestionText);
     const matchesFilter =
       productFilter === "all" ||
       (productFilter === "missing-weight" && missingWeight) ||
-      (productFilter === "has-weight" && !missingWeight);
+      (productFilter === "has-weight" && !missingWeight) ||
+      (productFilter === "weight-suggestion" && hasWeightSuggestion);
     return matchesQuery && matchesFilter;
   });
   const topProducts = catalogRows.filter((product) => money(product.quantitySold) > 0).slice(0, 4);
@@ -2622,6 +2726,7 @@ function ProductsView({ productCatalog, openOrder }) {
     .sort((a, b) => money(a.quantitySold) - money(b.quantitySold) || (b.lastOrderTime || 0) - (a.lastOrderTime || 0))
     .slice(0, 4);
   const missingWeightCount = catalogRows.filter((product) => money(product.unitWeightKg) <= 0).length;
+  const weightSuggestionCount = catalogRows.filter((product) => product.weightSuggestionText).length;
   const totalQuantity = catalogRows.reduce((sum, product) => sum + money(product.quantitySold), 0);
 
   return (
@@ -2637,6 +2742,7 @@ function ProductsView({ productCatalog, openOrder }) {
         <Kpi icon={Database} label="Sản phẩm đã lưu" value={catalogRows.length} />
         <Kpi icon={PackageCheck} label="Tổng số lượng đã bán" value={formatter.format(totalQuantity)} />
         <Kpi icon={TriangleAlert} label="Sản phẩm thiếu kg" value={missingWeightCount} tone={missingWeightCount ? "warning" : "success"} />
+        <Kpi icon={TriangleAlert} label="Gợi ý sửa kg" value={weightSuggestionCount} tone={weightSuggestionCount ? "warning" : "success"} />
         <Kpi icon={BarChart3} label="Bán chạy nhất" value={displayText(topProducts[0]?.product, "-")} tone="success" />
       </div>
 
@@ -2655,6 +2761,7 @@ function ProductsView({ productCatalog, openOrder }) {
             <option value="all">Tất cả sản phẩm</option>
             <option value="missing-weight">Thiếu kg cần bổ sung</option>
             <option value="has-weight">Đã có kg/sp</option>
+            <option value="weight-suggestion">Có gợi ý sửa kg</option>
           </select>
         </div>
         <div className="table-wrap">
@@ -2679,6 +2786,7 @@ function ProductsView({ productCatalog, openOrder }) {
                         <strong>{displayText(product.product, "Chưa nhập tên sản phẩm")}</strong>
                         <span>{displayText(product.source, "Chưa có shop")}</span>
                         {product.productUrl && <span>{displayText(product.productUrl)}</span>}
+                        {product.weightSuggestionText && <em className="product-weight-warning">{product.weightSuggestionText}</em>}
                       </div>
                     </div>
                   </td>
@@ -2913,7 +3021,7 @@ function flightOrderProgress(batchOrders) {
       if (status === "out_of_stock") sum.outOfStock += 1;
       if (status === "purchased") sum.purchased += 1;
       if (status === "sent_vn") sum.sentVn += 1;
-      if (status === "received_vn") sum.receivedVn += 1;
+      if (["waiting_vn_weight", "weight_checked", "reconciled"].includes(status)) sum.receivedVn += 1;
       if (status === "delivered") sum.delivered += 1;
       if (status === "cancelled") sum.cancelled += 1;
       return sum;
@@ -2931,7 +3039,9 @@ const packingWorkflowStatuses = [
   { id: "out_of_stock", label: "Hết hàng", hint: "Chờ khách chọn chuyển chuyến/hủy", tone: "stockout" },
   { id: "purchased", label: "Đã mua", hint: "Chờ gom/gửi về VN", tone: "ready" },
   { id: "sent_vn", label: "Đã gửi về VN", hint: "Theo dõi hàng bay", tone: "flying" },
-  { id: "received_vn", label: "Đã nhận ở VN", hint: "Chờ giao khách", tone: "arrived" }
+  { id: "waiting_vn_weight", label: "Chờ cân VN", hint: "Hàng đã về, chờ cân thực tế", tone: "arrived" },
+  { id: "weight_checked", label: "Đã cân VN", hint: "Chờ đối soát", tone: "arrived" },
+  { id: "reconciled", label: "Đã đối soát", hint: "Chờ đóng đơn/giao khách", tone: "arrived" }
 ];
 
 function PackingListSummary({ title, eyebrow, batches, orders, openBuyingChecklist }) {
@@ -3708,8 +3818,10 @@ function FlightOrderQuickActions({ order, openOrder, updateOrderStatus, canEditO
       {status === "out_of_stock" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "waiting_buy")}>Mua lại</button>}
       {status === "out_of_stock" && <button className="warning-action" type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "cancelled")}>Hủy</button>}
       {status === "purchased" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "sent_vn")}>Đã gửi VN</button>}
-      {status === "sent_vn" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "received_vn")}>Đã nhận VN</button>}
-      {status === "received_vn" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "delivered")}>Đã giao</button>}
+      {status === "sent_vn" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "waiting_vn_weight")}>Đã nhận VN</button>}
+      {status === "waiting_vn_weight" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "weight_checked")}>Đã cân VN</button>}
+      {status === "weight_checked" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "reconciled")}>Đối soát xong</button>}
+      {status === "reconciled" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "delivered")}>Đóng đơn</button>}
       <button type="button" onClick={() => openOrder(order)}>Sửa</button>
     </div>
   );
@@ -3732,10 +3844,11 @@ function FlightOrderRow({ order, batch = null, orders = [], openOrder, updateOrd
   );
 }
 
-function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrder }) {
+function AfterArrivalView({ orders, batches, accounts, currentAccountId, openOrder, updateOrder, canEditOrder }) {
   const [arrivalYearFilter, setArrivalYearFilter] = React.useState("all");
   const [arrivalBatchFilter, setArrivalBatchFilter] = React.useState("latest");
-  const managedStatuses = new Set(["received_vn", "delivered"]);
+  const activeChecker = accounts?.find((account) => account.id === currentAccountId);
+  const managedStatuses = new Set(["waiting_vn_weight", "weight_checked", "reconciled", "delivered"]);
   const managedOrders = orders
     .filter((order) => {
       const status = normalizeOrderStatus(order.status);
@@ -3753,13 +3866,15 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrde
     (sum, order) => {
       const finance = orderFinanceForBatch(order, findOrderBatch(batches, order), orders);
       const paid = Boolean(order.paidInFull || finance.remainingVnd <= 0);
-      sum.received += (order.receivedVnDate || ["received_vn", "delivered"].includes(normalizeOrderStatus(order.status))) ? 1 : 0;
+      sum.received += (order.receivedVnDate || ["waiting_vn_weight", "weight_checked", "reconciled", "delivered"].includes(normalizeOrderStatus(order.status))) ? 1 : 0;
+      sum.vnWeight += finance.hasVnWeight ? 1 : 0;
+      sum.shipLoss += finance.hasShippingLoss ? 1 : 0;
       sum.shipped += (order.customerShipped || normalizeOrderStatus(order.status) === "delivered") ? 1 : 0;
       sum.paid += paid ? 1 : 0;
       sum.remaining += paid ? 0 : finance.remainingVnd;
       return sum;
     },
-    { received: 0, shipped: 0, paid: 0, remaining: 0 }
+    { received: 0, vnWeight: 0, shipLoss: 0, shipped: 0, paid: 0, remaining: 0 }
   );
   const batchGroups = [
     ...sortedFlightBatches(batches)
@@ -3805,25 +3920,27 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrde
         sum.total += 1;
         sum.checked += order.vnStockChecked ? 1 : 0;
         sum.shipped += (order.customerShipped || status === "delivered") ? 1 : 0;
+        sum.vnWeight += finance.hasVnWeight ? 1 : 0;
+        sum.shipLoss += finance.hasShippingLoss ? 1 : 0;
         sum.paid += paid ? 1 : 0;
         sum.remaining += paid ? 0 : finance.remainingVnd;
         return sum;
       },
-      { total: 0, checked: 0, shipped: 0, paid: 0, remaining: 0 }
+      { total: 0, checked: 0, shipped: 0, paid: 0, remaining: 0, vnWeight: 0, shipLoss: 0 }
     );
   }
 
   function setReceived(order, checked) {
     if (checked) {
       updateOrder(order.id, {
-        status: normalizeOrderStatus(order.status) === "sent_vn" ? "received_vn" : order.status,
+        status: normalizeOrderStatus(order.status) === "sent_vn" ? "waiting_vn_weight" : order.status,
         receivedVnDate: order.receivedVnDate || today(),
         vnStockLocation: order.vnStockLocation || "Kho VN"
       });
       return;
     }
     updateOrder(order.id, {
-      status: normalizeOrderStatus(order.status) === "received_vn" ? "sent_vn" : order.status,
+      status: ["waiting_vn_weight", "weight_checked"].includes(normalizeOrderStatus(order.status)) ? "sent_vn" : order.status,
       receivedVnDate: ""
     });
   }
@@ -3839,7 +3956,7 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrde
       return;
     }
     updateOrder(order.id, {
-      status: "received_vn",
+      status: "reconciled",
       customerShipped: false,
       customerShippedDate: ""
     });
@@ -3872,6 +3989,8 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrde
       <section className="metric-grid lean">
         <Kpi label="Đơn cần theo dõi" value={String(managedOrders.length)} icon={Truck} />
         <Kpi label="Đã về VN" value={String(totals.received)} icon={PackageCheck} />
+        <Kpi label="Đã cân VN" value={String(totals.vnWeight)} icon={Boxes} tone={totals.received > totals.vnWeight ? "warning" : "success"} />
+        <Kpi label="Lỗ phí ship" value={String(totals.shipLoss)} icon={TriangleAlert} tone={totals.shipLoss ? "warning" : "success"} />
         <Kpi label="Đã ship/giao" value={String(totals.shipped)} icon={CheckCircle2} />
         <Kpi label="Đã thu đủ" value={String(totals.paid)} icon={WalletCards} tone={totals.remaining ? "warning" : "success"} />
         <Kpi label="Còn phải thu" value={vnd(totals.remaining)} icon={CreditCard} tone={totals.remaining ? "warning" : "success"} />
@@ -3920,6 +4039,8 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrde
                 <div className="arrival-flight-stats">
                   <span>Đơn <strong>{stats.total}</strong></span>
                   <span>Đã kiểm kho <strong>{stats.checked}</strong></span>
+                  <span>Đã cân VN <strong>{stats.vnWeight}</strong></span>
+                  <span>Lỗ ship <strong>{stats.shipLoss}</strong></span>
                   <span>Đã giao <strong>{stats.shipped}</strong></span>
                   <span>Thu đủ <strong>{stats.paid}</strong></span>
                 </div>
@@ -3928,12 +4049,13 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrde
                     const batch = findOrderBatch(batches, order);
                     const status = normalizeOrderStatus(order.status);
                     const finance = orderFinanceForBatch(order, batch, orders);
-                    const receivedChecked = Boolean(order.receivedVnDate || ["received_vn", "delivered"].includes(status));
+                    const receivedChecked = Boolean(order.receivedVnDate || ["waiting_vn_weight", "weight_checked", "reconciled", "delivered"].includes(status));
                     const shippedChecked = Boolean(order.customerShipped || status === "delivered");
                     const paidChecked = Boolean(order.paidInFull || finance.remainingVnd <= 0);
-                    const editable = !canEditOrder || canEditOrder(order);
+                    const canFullEdit = !canEditOrder || canEditOrder(order);
+                    const editable = true;
                     return (
-                      <article className={`post-arrival-card ${editable ? "" : "locked"}`} key={order.id}>
+                      <article className={`post-arrival-card ${canFullEdit ? "" : "locked"}`} key={order.id}>
                         <button className="post-arrival-product" type="button" onClick={() => openOrder(order)}>
                           <ProductCell order={order} batch={batch} orders={orders} />
                           <span>{order.id}</span>
@@ -3942,12 +4064,67 @@ function AfterArrivalView({ orders, batches, openOrder, updateOrder, canEditOrde
                           <span>{order.customer || "-"} · {batch?.code || "Chưa xếp chuyến"}</span>
                           <span>Về VN {order.receivedVnDate || batch?.arrival || "-"}</span>
                         </div>
-                        {!editable && <div className="arrival-lock-note">Chỉ Ryan được sửa đơn đã về. Staff cần xin quyền trước khi chỉnh.</div>}
+                        {!canFullEdit && <div className="arrival-lock-note">Staff chỉ cập nhật cân/kho/giao/thu ở tab này. Sửa chi tiết đơn đã về cần Ryan.</div>}
                         <label className={`ops-check ${receivedChecked ? "done" : ""}`}>
                           <input type="checkbox" checked={receivedChecked} disabled={shippedChecked || !editable} onChange={(event) => setReceived(order, event.target.checked)} />
                           <span>Đã về VN</span>
-                          <input type="date" disabled={!editable} value={order.receivedVnDate || ""} onChange={(event) => updateOrder(order.id, { receivedVnDate: event.target.value, vnStockLocation: event.target.value ? (order.vnStockLocation || "Kho VN") : order.vnStockLocation, status: status === "sent_vn" && event.target.value ? "received_vn" : status })} />
+                          <input type="date" disabled={!editable} value={order.receivedVnDate || ""} onChange={(event) => updateOrder(order.id, { receivedVnDate: event.target.value, vnStockLocation: event.target.value ? (order.vnStockLocation || "Kho VN") : order.vnStockLocation, status: status === "sent_vn" && event.target.value ? "waiting_vn_weight" : status })} />
                         </label>
+                        <div className={`vn-weight-card ${finance.hasShippingLoss ? "loss" : ""}`}>
+                          <div>
+                            <span>Kg báo khách</span>
+                            <strong>{kg(finance.quotedWeightKg)}kg</strong>
+                          </div>
+                          <label>
+                            Kg VN thực tế
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              inputMode="decimal"
+                              disabled={!editable}
+                              value={order.vnActualWeightKg || ""}
+                              onChange={(event) => {
+                                const nextWeight = event.target.value;
+                                updateOrder(order.id, {
+                                  vnActualWeightKg: nextWeight,
+                                  weightCheckedBy: nextWeight ? (order.weightCheckedBy || activeChecker?.displayName || activeChecker?.username || "") : order.weightCheckedBy,
+                                  weightCheckedAt: nextWeight ? (order.weightCheckedAt || today()) : "",
+                                  status: nextWeight ? "weight_checked" : "waiting_vn_weight"
+                                });
+                              }}
+                              onBlur={(event) => {
+                                const nextWeight = roundWeightUpKg(event.target.value);
+                                updateOrder(order.id, {
+                                  vnActualWeightKg: nextWeight,
+                                  weightCheckedBy: nextWeight ? (order.weightCheckedBy || activeChecker?.displayName || activeChecker?.username || "") : order.weightCheckedBy,
+                                  weightCheckedAt: nextWeight ? (order.weightCheckedAt || today()) : "",
+                                  status: nextWeight ? "weight_checked" : "waiting_vn_weight"
+                                });
+                              }}
+                            />
+                          </label>
+                          <label>
+                            Ship thực tế VN
+                            <input
+                              type="number"
+                              min="0"
+                              disabled={!editable}
+                              value={order.vnActualShippingCost || ""}
+                              onChange={(event) => updateOrder(order.id, { vnActualShippingCost: event.target.value })}
+                            />
+                          </label>
+                          <div>
+                            <span>Chênh kg</span>
+                            <strong className={finance.weightVarianceKg > 0 ? "warn" : ""}>{finance.hasVnWeight ? `${finance.weightVarianceKg >= 0 ? "+" : ""}${kg(finance.weightVarianceKg)}kg` : "Chưa cân"}</strong>
+                          </div>
+                          <div>
+                            <span>Lãi/lỗ ship</span>
+                            <strong className={finance.hasShippingLoss ? "warn" : ""}>{finance.hasVnWeight ? vnd(finance.weightProfitVnd) : "-"}</strong>
+                          </div>
+                          {finance.hasShippingLoss && <em>Đơn hàng đang lỗ phí ship do cân thực tế cao hơn cân báo khách.</em>}
+                          <button type="button" disabled={!editable || !finance.hasVnWeight} onClick={() => updateOrder(order.id, { status: "reconciled", reconciledAt: today() })}>Đối soát xong</button>
+                        </div>
                         <label className={`ops-check ${order.vnStockChecked ? "done" : ""}`}>
                           <input type="checkbox" checked={Boolean(order.vnStockChecked)} disabled={!editable} onChange={(event) => updateOrder(order.id, { vnStockChecked: event.target.checked })} />
                           <span>Đã kiểm kho</span>
@@ -4004,6 +4181,14 @@ function CashflowView({ orders, batches, transactions, openTransaction, openOrde
       cost: finance.adjustedCost
     };
   });
+  const reconciliationOrders = orders
+    .map((order) => {
+      const batch = findOrderBatch(batches, order);
+      const finance = orderFinanceForBatch(order, batch, orders);
+      return { order, batch, finance };
+    })
+    .filter(({ order, finance }) => !["cancelled", "out_of_stock"].includes(normalizeOrderStatus(order.status)) && (order.receivedVnDate || finance.hasVnWeight || finance.hasShippingLoss))
+    .sort((a, b) => Number(b.finance.hasShippingLoss) - Number(a.finance.hasShippingLoss) || String(b.order.receivedVnDate || "").localeCompare(String(a.order.receivedVnDate || "")));
 
   return (
     <div className="screen-stack">
@@ -4027,19 +4212,21 @@ function CashflowView({ orders, batches, transactions, openTransaction, openOrde
                 <th>Đã cọc / đã thu</th>
                 <th>Số tiền còn lại phải thu của khách</th>
                 <th>Kg chốt chuyến</th>
+                <th>Đối soát VN</th>
                 <th>Chi cước bay</th>
                 <th>Tổng chi phí</th>
                 {canSeeProfit && <th>Lãi dự kiến</th>}
               </tr>
             </thead>
             <tbody>
-              {totalsByBatch.map(({ batch, revenue, deposit, remaining, chargeWeightKg, avgActualWeightKg, actualAirFreightVnd, cost }) => (
+              {totalsByBatch.map(({ batch, revenue, deposit, remaining, chargeWeightKg, avgActualWeightKg, actualAirFreightVnd, cost, missingVnWeight, shippingLossOrders }) => (
                 <tr key={batch.id}>
                   <td data-label="Đợt"><strong>{batch.code || batch.id}</strong></td>
                   <td data-label="Tổng thu / Doanh số">{vnd(revenue)}</td>
                   <td data-label="Đã cọc / đã thu">{vnd(deposit)}</td>
                   <td data-label="Số tiền còn lại phải thu"><span className="money-due">{vnd(remaining)}</span></td>
                   <td data-label="Kg chốt chuyến"><strong>{kg(chargeWeightKg)}kg</strong><span>{avgActualWeightKg > 0 ? `Bình quân tham khảo ${kg(avgActualWeightKg)}kg/đơn` : "Chưa nhập kg cân thực tế"}</span></td>
+                  <td data-label="Đối soát VN"><strong>{missingVnWeight ? `Chưa cân ${missingVnWeight}` : "Đã cân VN"}</strong><span className={shippingLossOrders ? "money-due" : ""}>{shippingLossOrders ? `${shippingLossOrders} đơn lỗ phí ship` : "Không có cảnh báo lỗ ship"}</span></td>
                   <td data-label="Chi cước bay"><strong>{vnd(actualAirFreightVnd)}</strong><span>{kg(chargeWeightKg)}kg x {aud(batch.freightAud)}</span></td>
                   <td data-label="Tổng chi phí">{vnd(cost)}</td>
                   {canSeeProfit && <td data-label="Lãi dự kiến">{vnd(revenue - cost)}</td>}
@@ -4047,6 +4234,44 @@ function CashflowView({ orders, batches, transactions, openTransaction, openOrde
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+      <div className="panel">
+        <div className="panel-title">
+          <div>
+            <span className="eyebrow">Reconciliation</span>
+            <h2>Đối soát cân VN theo đơn</h2>
+          </div>
+          <TriangleAlert size={18} />
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Order</th>
+                <th>Chuyến</th>
+                <th>Cân báo khách</th>
+                <th>Cân VN thực tế</th>
+                <th>Chênh lệch</th>
+                <th>Ship thực tế</th>
+                <th>Cảnh báo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {reconciliationOrders.map(({ order, batch, finance }) => (
+                <tr key={order.id} onClick={() => openOrder(order)}>
+                  <td data-label="Order"><strong>{order.id}</strong><span>{order.product}</span></td>
+                  <td data-label="Chuyến">{batch?.code || "Chưa xếp"}</td>
+                  <td data-label="Cân báo khách">{kg(finance.quotedWeightKg)}kg</td>
+                  <td data-label="Cân VN">{finance.hasVnWeight ? `${kg(finance.vnActualWeightKg)}kg` : "Chưa có cân VN"}</td>
+                  <td data-label="Chênh lệch"><strong className={finance.weightVarianceKg > 0 ? "money-due" : ""}>{finance.hasVnWeight ? `${finance.weightVarianceKg >= 0 ? "+" : ""}${kg(finance.weightVarianceKg)}kg` : "-"}</strong><span>{finance.hasVnWeight && finance.quotedWeightKg > 0 ? `${Math.round(finance.weightVarianceRate * 100)}%` : ""}</span></td>
+                  <td data-label="Ship thực tế"><strong>{vnd(finance.actualShippingCostVnd)}</strong><span>Tạm tính {vnd(finance.airFreightVnd)}</span></td>
+                  <td data-label="Cảnh báo">{finance.hasShippingLoss ? <span className="status-chip out_of_stock">Lỗ phí ship</span> : finance.hasVnWeight ? <span className="status-chip reconciled">Đã cân</span> : <span className="status-chip waiting_vn_weight">Chưa cân VN</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!reconciliationOrders.length && <EmptyState title="Chưa có đơn cần đối soát cân VN" body="Khi hàng về VN và bắt đầu cân thực tế, các đơn sẽ hiện ở đây để theo dõi chênh kg và lỗ phí ship." />}
         </div>
       </div>
       <div className="panel">
@@ -4568,6 +4793,10 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
               <span className="field-hint">{selectedBatch ? `Khóa theo chuyến ${selectedBatch.code || selectedBatch.id}: ${aud(selectedBatch.freightAud)} / kg` : "Chọn chuyến bay để tự áp cước AUD/kg."}</span>
             </Field>
             <Field label="Giá cân cuối VND/kg"><input type="number" min="0" value={draft.finalWeightRateVnd ?? defaultFinalWeightRateVnd} onChange={(event) => setDraft({ ...draft, finalWeightRateVnd: event.target.value })} /></Field>
+            <Field label="Kg VN thực tế"><input type="number" min="0" step="0.1" inputMode="decimal" value={draft.vnActualWeightKg ?? 0} onChange={(event) => setDraft({ ...draft, vnActualWeightKg: event.target.value })} onBlur={() => setDraft({ ...draft, vnActualWeightKg: roundWeightUpKg(draft.vnActualWeightKg) })} /></Field>
+            <Field label="Ship thực tế VN"><input type="number" min="0" value={draft.vnActualShippingCost ?? 0} onChange={(event) => setDraft({ ...draft, vnActualShippingCost: event.target.value })} /></Field>
+            <Field label="Người cân"><input value={draft.weightCheckedBy || ""} onChange={(event) => setDraft({ ...draft, weightCheckedBy: event.target.value })} /></Field>
+            <Field label="Ngày cân VN"><input type="date" value={draft.weightCheckedAt || ""} onChange={(event) => setDraft({ ...draft, weightCheckedAt: event.target.value })} /></Field>
             <Field label="Tỉ giá AUD/VND">
               <input className={selectedBatch ? "synced-input" : ""} type="number" readOnly={Boolean(selectedBatch)} value={draft.exchangeRate} onChange={(event) => setDraft({ ...draft, exchangeRate: event.target.value })} />
               <span className="field-hint">{selectedBatch ? `Khóa theo chuyến ${selectedBatch.code || selectedBatch.id}: ${vnd(batchExchangeRate(batches, selectedBatch.id))}` : "Chọn chuyến bay để lấy tỉ giá chuẩn."}</span>
@@ -4584,8 +4813,8 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
             <section className="formula-card">
               <span className="summary-section-title">Công thức tính đơn</span>
               <p>
-                Cước đơn dùng đúng kg sản phẩm: <strong>{finance.quantity} × {kg(finance.unitWeightKg)}kg/sp = {kg(finance.billingWeightKg)}kg</strong>.
-                Kg chốt cả chuyến chỉ dùng để đối soát chuyến bay, không tự chia vào từng đơn.
+                Cân báo khách giữ nguyên: <strong>{finance.quantity} × {kg(finance.unitWeightKg)}kg/sp = {kg(finance.quotedWeightKg)}kg</strong>.
+                Cân VN thực tế chỉ dùng để tính lãi/lỗ thật và đối soát, không sửa giá cũ đã báo khách.
               </p>
               <div className="formula-line">
                 <span>Tiền hàng</span>
@@ -4596,8 +4825,12 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
                 <strong>{finance.goodsVnd < orderFeeThresholdVnd ? "Dưới 500k: 50.000đ" : `Từ 500k: 10% = ${vnd(finance.purchaseFeeVnd)}`}</strong>
               </div>
               <div className="formula-line">
-                <span>Cước bay gốc</span>
+                <span>Cước tạm tính</span>
                 <strong>{kg(finance.billingWeightKg)}kg × {aud(draft.intlShippingAud)}/kg × {vnd(finance.rate)} = {vnd(finance.airFreightVnd)}</strong>
+              </div>
+              <div className="formula-line">
+                <span>Đối soát VN</span>
+                <strong>{finance.hasVnWeight ? `${kg(finance.vnActualWeightKg)}kg thực tế · chênh ${finance.weightVarianceKg >= 0 ? "+" : ""}${kg(finance.weightVarianceKg)}kg · ship thật ${vnd(finance.actualShippingCostVnd)}` : "Chưa có cân VN thực tế"}</strong>
               </div>
               <div className="formula-line">
                 <span>Thu cân cuối</span>
@@ -4608,9 +4841,10 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
             <div><span>Cọc đã thu</span><strong>{vnd(finance.depositVnd)}</strong></div>
             <div><span>Tiền hàng</span><strong>{vnd(finance.goodsVnd)}</strong></div>
             <div><span>Phí mua hàng</span><strong>{vnd(finance.purchaseFeeVnd)}</strong></div>
-            <div><span>Cước cân gốc</span><strong>{vnd(finance.airFreightVnd)}</strong><small>{kg(finance.billingWeightKg)}kg × {aud(draft.intlShippingAud)} × {vnd(finance.rate)}</small></div>
+            <div><span>Cước cân tạm tính</span><strong>{vnd(finance.airFreightVnd)}</strong><small>{kg(finance.billingWeightKg)}kg × {aud(draft.intlShippingAud)} × {vnd(finance.rate)}</small></div>
+            <div className={finance.hasShippingLoss ? "warning" : ""}><span>Ship thực tế VN</span><strong>{vnd(finance.actualShippingCostVnd)}</strong><small>{finance.hasVnWeight ? `Cân VN ${kg(finance.vnActualWeightKg)}kg · lệch ${finance.weightVarianceKg >= 0 ? "+" : ""}${kg(finance.weightVarianceKg)}kg` : "Chưa có cân VN, đang dùng tạm tính"}</small></div>
             <div><span>Số tiền cân cuối</span><strong>{vnd(finance.finalWeightChargeVnd)}</strong><small>{kg(finance.billingWeightKg)}kg × {vnd(finance.finalWeightRateVnd)}</small></div>
-            <div><span>Lãi cân</span><strong>{vnd(finance.weightProfitVnd)}</strong><small>Cân cuối thu khách - cước bay gốc</small></div>
+            <div className={finance.hasShippingLoss ? "warning" : ""}><span>Lãi/lỗ ship thật</span><strong>{vnd(finance.weightProfitVnd)}</strong><small>Cân cuối thu khách - ship thực tế VN</small></div>
             <div><span>Ship Úc</span><strong>{vnd(finance.domesticShippingVnd)}</strong></div>
             <div><span>{hasManualTotalThu ? "Tổng thu nhập tay" : "Tổng thu tự động"}</span><strong>{vnd(finance.totalThuVnd)}</strong><small>{hasManualTotalThu ? `Gợi ý tự động: ${vnd(finance.suggestedTotalThuVnd)}` : "Tiền hàng + ship Úc + phí mua + cân cuối + phụ phí"}</small></div>
           </div>
@@ -4664,7 +4898,7 @@ function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderSt
             </select>
           </Field>
           <Field label="Sức chứa kg"><input type="number" value={draft.capacityKg} onChange={(event) => setDraft({ ...draft, capacityKg: event.target.value })} /></Field>
-          <Field label="Tổng kg cân thực tế cả chuyến">
+          <Field label="Tổng kg cân VN cả chuyến">
             <input
               type="number"
               min="0"
@@ -4674,7 +4908,7 @@ function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderSt
               onChange={(event) => setDraft({ ...draft, actualWeightKg: event.target.value })}
               onBlur={() => setDraft({ ...draft, actualWeightKg: roundWeightUpKg(draft.actualWeightKg) })}
             />
-            <span className="field-hint">Nhập số kg chốt sau khi cân thùng/gửi hàng từ Úc. App làm tròn lên nấc 0.1kg; nếu để 0, app dùng tổng kg ước tính từ các đơn.</span>
+            <span className="field-hint">Nhập tổng kg cân thực tế sau khi hàng về VN. Nếu để 0, app dùng tổng kg VN từ từng đơn hoặc kg báo khách để tham khảo.</span>
           </Field>
           <Field label="Cước bay AUD/kg">
             <input type="number" min="0" step="0.01" value={draft.freightAud} onChange={(event) => setDraft({ ...draft, freightAud: event.target.value })} />

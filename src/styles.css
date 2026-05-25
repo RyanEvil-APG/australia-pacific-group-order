@@ -1024,6 +1024,21 @@ tbody tr.split-bill-row {
   background: #dff7ef;
 }
 
+.status-chip.waiting_vn_weight {
+  color: #7b4216;
+  background: #fff1d4;
+}
+
+.status-chip.weight_checked {
+  color: #17446f;
+  background: #eaf5ff;
+}
+
+.status-chip.reconciled {
+  color: #0b5c45;
+  background: #e9f8f2;
+}
+
 .status-chip.delivered {
   color: #214a32;
   background: #e5f4df;
@@ -1363,6 +1378,22 @@ tbody tr.split-bill-row {
   border-radius: 8px;
 }
 
+.product-weight-warning {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  color: #9b2c3a;
+  background: #fff0f1;
+  border: 1px solid rgba(155, 44, 58, 0.18);
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1.3;
+}
+
 .product-tab-error {
   padding-bottom: 12px;
 }
@@ -1413,6 +1444,12 @@ tbody tr.split-bill-row {
   padding: 10px;
   background: #f8f3ea;
   border-radius: 8px;
+}
+
+.auto-summary div.warning {
+  color: #9b2c3a;
+  background: #fff0f1;
+  border: 1px solid rgba(155, 44, 58, 0.16);
 }
 
 .formula-card {
@@ -2638,6 +2675,70 @@ tbody tr.split-bill-row {
   font-size: 0.82rem;
 }
 
+.vn-weight-card {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+  background: #eef5ff;
+  border: 1px solid rgba(39, 77, 122, 0.14);
+  border-radius: 8px;
+}
+
+.vn-weight-card.loss {
+  background: #fff0f1;
+  border-color: rgba(155, 44, 58, 0.2);
+}
+
+.vn-weight-card div,
+.vn-weight-card label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: #746c61;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.vn-weight-card strong {
+  color: #211d17;
+  font-size: 1rem;
+}
+
+.vn-weight-card strong.warn,
+.vn-weight-card em {
+  color: #9b2c3a;
+}
+
+.vn-weight-card input {
+  width: 100%;
+  min-height: 34px;
+}
+
+.vn-weight-card em {
+  grid-column: 1 / -1;
+  padding: 7px 8px;
+  background: #fff;
+  border-radius: 8px;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.vn-weight-card button {
+  grid-column: 1 / -1;
+  min-height: 34px;
+  color: #fffaf0;
+  background: #274d7a;
+  border: 0;
+  border-radius: 8px;
+  font-weight: 950;
+}
+
+.vn-weight-card button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .post-arrival-money {
   display: flex;
   align-items: center;
@@ -3492,6 +3593,10 @@ tbody tr.split-bill-row {
   }
 
   .weight-audit-row {
+    grid-template-columns: 1fr;
+  }
+
+  .vn-weight-card {
     grid-template-columns: 1fr;
   }
 
