@@ -243,6 +243,12 @@ function kg(value) {
   return Number(value || 0).toLocaleString("vi-VN", { maximumFractionDigits: 2 });
 }
 
+function roundWeightUpKg(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return Math.ceil((amount - Number.EPSILON) * 100) / 100;
+}
+
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -290,6 +296,9 @@ function chemistPreviewFromUrl(rawUrl) {
 function normalizeOrder(order) {
   const chemistFallback = chemistPreviewFromUrl(order?.productUrl);
   const productImageUrl = order?.productImageUrl || chemistFallback?.imageUrl || "";
+  const quantity = Math.max(1, money(order?.quantity) || 1);
+  const rawUnitWeightKg = money(order?.unitWeightKg);
+  const unitWeightKg = roundWeightUpKg(rawUnitWeightKg > 0 ? rawUnitWeightKg : money(order?.weightKg) / quantity);
   return {
     ...order,
     productUrl: order?.productUrl ?? "",
@@ -297,6 +306,9 @@ function normalizeOrder(order) {
     source: order?.source || chemistFallback?.siteName || "",
     productImageUrl,
     productImageSource: productImageUrl ? (order?.productImageSource || "auto") : "",
+    quantity,
+    unitWeightKg,
+    weightKg: unitWeightKg * quantity,
     outOfStockAt: order?.outOfStockAt || "",
     outOfStockDate: order?.outOfStockDate || "",
     outOfStockBatchId: order?.outOfStockBatchId || "",
@@ -620,10 +632,8 @@ function findPreferredAccountId(accounts, candidates, fallbackId) {
 
 function orderUnitWeightKg(order) {
   const quantity = Math.max(1, money(order?.quantity) || 1);
-  if (Object.prototype.hasOwnProperty.call(order || {}, "unitWeightKg")) {
-    return Math.max(0, money(order.unitWeightKg));
-  }
-  return Math.max(0, money(order?.weightKg) / quantity);
+  const unitWeightKg = money(order?.unitWeightKg);
+  return roundWeightUpKg(unitWeightKg > 0 ? unitWeightKg : money(order?.weightKg) / quantity);
 }
 
 function orderTotalWeightKg(order) {
@@ -747,6 +757,38 @@ function batchFinanceSummary(batch, orders) {
   };
 }
 
+function batchWeightAudit(batch, orders) {
+  const finance = batchFinanceSummary(batch, orders);
+  const varianceKg = finance.actualWeightKg > 0 ? finance.actualWeightKg - finance.estimatedWeightKg : 0;
+  const varianceRate = finance.actualWeightKg > 0 && finance.estimatedWeightKg > 0 ? varianceKg / finance.estimatedWeightKg : 0;
+  const orderRows = finance.batchOrders
+    .filter((order) => !["cancelled", "out_of_stock"].includes(normalizeOrderStatus(order.status)))
+    .map((order) => {
+      const quantity = Math.max(1, money(order.quantity) || 1);
+      const unitWeightKg = orderUnitWeightKg(order);
+      const totalWeightKg = orderTotalWeightKg(order);
+      const share = finance.estimatedWeightKg > 0 ? totalWeightKg / finance.estimatedWeightKg : 0;
+      const status =
+        unitWeightKg <= 0 ? "missing" :
+        finance.actualWeightKg > 0 && Math.abs(varianceRate) >= 0.15 ? "review" :
+        "ok";
+      return { order, quantity, unitWeightKg, totalWeightKg, share, status };
+    })
+    .sort((a, b) => {
+      const rank = { missing: 0, review: 1, ok: 2 };
+      return (rank[a.status] ?? 3) - (rank[b.status] ?? 3) || b.totalWeightKg - a.totalWeightKg;
+    });
+  return {
+    ...finance,
+    varianceKg,
+    varianceRate,
+    varianceAbsKg: Math.abs(varianceKg),
+    hasVariance: finance.actualWeightKg > 0 && Math.abs(varianceKg) > 0.01,
+    missingWeightOrders: orderRows.filter((row) => row.status === "missing"),
+    orderRows
+  };
+}
+
 function displayText(value, fallback = "") {
   if (typeof value === "string") return value;
   if (typeof value === "number") return String(value);
@@ -802,7 +844,7 @@ function mergeProductCatalogItem(existing, order, batch, orders) {
     productUrl: displayText(order.productUrl || existing?.productUrl),
     productImageUrl: displayText(order.productImageUrl || existing?.productImageUrl),
     productImageSource: displayText(order.productImageSource || existing?.productImageSource),
-    unitWeightKg: money(order.unitWeightKg) > 0 ? money(order.unitWeightKg) : money(existing?.unitWeightKg),
+    unitWeightKg: money(order.unitWeightKg) > 0 ? roundWeightUpKg(order.unitWeightKg) : roundWeightUpKg(existing?.unitWeightKg),
     aud: money(order.aud) > 0 ? money(order.aud) : money(existing?.aud),
     ordersCount: (existing?.ordersCount || 0) + 1,
     soldOrdersCount: (existing?.soldOrdersCount || 0) + (isSoldSignal ? 1 : 0),
@@ -823,7 +865,7 @@ function mergeProductCatalogItem(existing, order, batch, orders) {
     next.productImageUrl = displayText(order.productImageUrl || next.productImageUrl);
     next.productImageSource = displayText(order.productImageSource || next.productImageSource);
     if (money(order.aud) > 0) next.aud = money(order.aud);
-    if (money(order.unitWeightKg) > 0) next.unitWeightKg = money(order.unitWeightKg);
+    if (money(order.unitWeightKg) > 0) next.unitWeightKg = roundWeightUpKg(order.unitWeightKg);
   }
 
   return next;
@@ -1086,7 +1128,7 @@ function normalizeBatchCodes(batches) {
     const pricedBatch = {
       ...batch,
       freightAud: Math.max(0, Number(batch?.freightAud || 0)),
-      actualWeightKg: Math.max(0, Number(batch?.actualWeightKg || 0)),
+      actualWeightKg: roundWeightUpKg(batch?.actualWeightKg || 0),
       exchangeRate: Math.max(0, Number(batch?.exchangeRate || exchangeRate))
     };
     if (!pricedBatch?.departure) return pricedBatch;
@@ -1493,7 +1535,7 @@ function App() {
     if (!canEditOrder(draft)) return;
     const chemistFallback = chemistPreviewFromUrl(draft.productUrl);
     const quantity = Math.max(1, Number(draft.quantity || 1));
-    const unitWeightKg = Math.max(0, Number(draft.unitWeightKg ?? 0));
+    const unitWeightKg = roundWeightUpKg(draft.unitWeightKg ?? 0);
     const totalWeightKg = unitWeightKg * quantity;
     const orderId = getOrderId(draft);
     const existingOrder = orders.find((order) => order.id === orderId);
@@ -1626,7 +1668,7 @@ function App() {
       code,
       status: normalizeBatchStatus(draft.status),
       freightAud: Math.max(0, Number(draft.freightAud || 0)),
-      actualWeightKg: Math.max(0, Number(draft.actualWeightKg || 0)),
+      actualWeightKg: roundWeightUpKg(draft.actualWeightKg || 0),
       exchangeRate: Math.max(0, Number(draft.exchangeRate || exchangeRate))
     };
     setBatches((current) => {
@@ -2889,7 +2931,8 @@ function PackingListSummary({ title, eyebrow, batches, orders, openBuyingCheckli
       const batchOrders = batchOrderRows(batch, orders);
       const progress = flightOrderProgress(batchOrders);
       const finance = batchFinanceSummary(batch, orders);
-      return { batch, progress, finance };
+      const audit = batchWeightAudit(batch, orders);
+      return { batch, progress, finance, audit };
     })
     .filter(({ progress }) => progress.total > 0 || activeBatches.length <= 6)
     .slice(0, 6);
@@ -2908,7 +2951,7 @@ function PackingListSummary({ title, eyebrow, batches, orders, openBuyingCheckli
         </button>
       </div>
       <div className="packing-list-grid">
-        {summaryBatches.map(({ batch, progress, finance }) => (
+        {summaryBatches.map(({ batch, progress, finance, audit }) => (
           <button className="packing-list-card" type="button" key={batch.id} onClick={() => openBuyingChecklist(batch.id)}>
             <div className="packing-card-head">
               <strong>{batch.code || batch.id}</strong>
@@ -2922,6 +2965,7 @@ function PackingListSummary({ title, eyebrow, batches, orders, openBuyingCheckli
               <span>Đã gửi <strong>{progress.sentVn}</strong></span>
               <span>Đã nhận <strong>{progress.receivedVn}</strong></span>
               <span>Kg chốt <strong>{kg(finance.chargeWeightKg)}</strong></span>
+              <span>Vênh kg <strong>{audit.actualWeightKg > 0 ? `${audit.varianceKg >= 0 ? "+" : ""}${kg(audit.varianceKg)}` : "-"}</strong></span>
               <span>Chi cước <strong>{compactVnd(finance.actualAirFreightVnd)}</strong></span>
             </div>
           </button>
@@ -3390,13 +3434,14 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
       sum.freightAud += money(batch.freightAud);
       sum.estimatedWeightKg += finance.estimatedWeightKg;
       sum.chargeWeightKg += finance.chargeWeightKg;
+      sum.varianceAbsKg += finance.actualWeightKg > 0 ? Math.abs(finance.actualWeightKg - finance.estimatedWeightKg) : 0;
       sum.actualAirFreightVnd += finance.actualAirFreightVnd;
       sum.remaining += finance.remaining;
       sum.revenue += finance.revenue;
       sum.cost += finance.adjustedCost;
       return sum;
     },
-    { orders: 0, waitingBuy: 0, outOfStock: 0, purchased: 0, sentVn: 0, freightAud: 0, estimatedWeightKg: 0, chargeWeightKg: 0, actualAirFreightVnd: 0, remaining: 0, revenue: 0, cost: 0 }
+    { orders: 0, waitingBuy: 0, outOfStock: 0, purchased: 0, sentVn: 0, freightAud: 0, estimatedWeightKg: 0, chargeWeightKg: 0, varianceAbsKg: 0, actualAirFreightVnd: 0, remaining: 0, revenue: 0, cost: 0 }
   );
 
   const renderFlightRows = (rows, emptyTitle, emptyBody) => (
@@ -3408,6 +3453,7 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
             <th>Trạng thái</th>
             <th>Lịch xử lý</th>
             <th>Tiến độ</th>
+            <th>Đối soát kg</th>
             <th>Tài chính</th>
             <th>Ghi chú</th>
           </tr>
@@ -3416,6 +3462,7 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
           {rows.map((batch) => {
             const status = normalizeBatchStatus(batch.status);
             const finance = batchFinanceSummary(batch, orders);
+            const audit = batchWeightAudit(batch, orders);
             const batchOrders = finance.batchOrders;
             const progress = flightOrderProgress(batchOrders);
             return (
@@ -3441,6 +3488,12 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
                     <span>Đã gửi {progress.sentVn}</span>
                     <span>Đã nhận {progress.receivedVn}</span>
                   </div>
+                </td>
+                <td data-label="Đối soát kg" className="weight-audit-cell">
+                  <strong className={audit.hasVariance ? "warn" : ""}>{audit.actualWeightKg > 0 ? `${audit.varianceKg >= 0 ? "+" : ""}${kg(audit.varianceKg)}kg` : "Chưa chốt"}</strong>
+                  <span>Đơn tính {kg(audit.estimatedWeightKg)}kg</span>
+                  <span>Chốt chuyến {audit.actualWeightKg > 0 ? `${kg(audit.actualWeightKg)}kg` : "-"}</span>
+                  {audit.missingWeightOrders.length > 0 && <span className="warn">Thiếu kg/sp {audit.missingWeightOrders.length} đơn</span>}
                 </td>
                 <td data-label="Tài chính" className="finance-cell">
                   <strong>{vnd(finance.revenue)}</strong>
@@ -3493,6 +3546,7 @@ function FlightsView({ batches, orders, openBatch, openOrder, openBuyingChecklis
         <Kpi label="Chờ mua" value={String(totals.waitingBuy)} icon={PackageCheck} tone={totals.waitingBuy ? "warning" : "success"} />
         <Kpi label="Hết hàng" value={String(totals.outOfStock)} icon={TriangleAlert} tone={totals.outOfStock ? "warning" : "success"} />
         <Kpi label="Kg chốt / ước" value={`${kg(totals.chargeWeightKg)} / ${kg(totals.estimatedWeightKg)}kg`} icon={Boxes} />
+        <Kpi label="Vênh kg cần kiểm" value={`${kg(totals.varianceAbsKg)}kg`} icon={TriangleAlert} tone={totals.varianceAbsKg > 0.01 ? "warning" : "success"} />
         <Kpi label="Chi cước bay" value={vnd(totals.actualAirFreightVnd)} icon={CreditCard} />
         {canSeeProfit && <Kpi label="Lãi chuyến đang mở" value={vnd(totals.revenue - totals.cost)} icon={Gem} tone="success" />}
       </section>
@@ -3962,7 +4016,7 @@ function CashflowView({ orders, batches, transactions, openTransaction, openOrde
                 <th>Tổng thu / Doanh số</th>
                 <th>Đã cọc / đã thu</th>
                 <th>Số tiền còn lại phải thu của khách</th>
-                <th>Kg chốt / chia đều</th>
+                <th>Kg chốt chuyến</th>
                 <th>Chi cước bay</th>
                 <th>Tổng chi phí</th>
                 {canSeeProfit && <th>Lãi dự kiến</th>}
@@ -4134,7 +4188,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
     const match = findProductCatalogMatch(productCatalog, item);
     if (!match) return { match: null, patch: {} };
     const quantity = Math.max(1, Number(current.quantity || 1));
-    const sourceWeight = money(options.unitWeightKg) > 0 ? money(options.unitWeightKg) : money(match.unitWeightKg);
+    const sourceWeight = money(options.unitWeightKg) > 0 ? roundWeightUpKg(options.unitWeightKg) : roundWeightUpKg(match.unitWeightKg);
     const sourceAud = money(options.aud) > 0 ? money(options.aud) : money(match.aud);
     const patch = {
       product: current.product || options.title || match.product || current.product,
@@ -4190,7 +4244,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
         const matched = findProductCatalogMatch(productCatalog, { ...current, productUrl: url, product: data.title || current.product });
         const nextAud = roundProductAud(data.priceAud ?? data.rawPriceAud);
         const catalogAud = money(matched?.aud);
-        const nextUnitWeight = money(data.unitWeightKg) || money(matched?.unitWeightKg);
+        const nextUnitWeight = roundWeightUpKg(data.unitWeightKg) || roundWeightUpKg(matched?.unitWeightKg);
         const shouldApplyPrice = nextAud > 0 || (catalogAud > 0 && money(current.aud) <= 0);
         const shouldApplyWeight = nextUnitWeight > 0 && (force || money(current.unitWeightKg) <= 0 || previousPreviewUrl !== url);
         const quantity = Math.max(1, Number(current.quantity || 1));
@@ -4207,7 +4261,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
       });
       const roundedPreviewAud = roundProductAud(data.priceAud ?? data.rawPriceAud);
       const matchedProduct = findProductCatalogMatch(productCatalog, { productUrl: url, product: data.title || "" });
-      const previewWeightKg = money(data.unitWeightKg) || money(matchedProduct?.unitWeightKg);
+      const previewWeightKg = roundWeightUpKg(data.unitWeightKg) || roundWeightUpKg(matchedProduct?.unitWeightKg);
       const hasPrice = roundedPreviewAud > 0;
       setPreviewStatus(data.imageUrl || hasPrice ? "done" : "error");
       setPreviewError(
@@ -4418,6 +4472,10 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
                   const nextUnitWeight = event.target.value;
                   setDraft({ ...draft, unitWeightKg: nextUnitWeight, weightKg: Math.max(0, Number(nextUnitWeight || 0)) * Math.max(1, Number(draft.quantity || 1)) });
                 }}
+                onBlur={() => {
+                  const nextUnitWeight = roundWeightUpKg(draft.unitWeightKg);
+                  setDraft({ ...draft, unitWeightKg: nextUnitWeight, weightKg: nextUnitWeight * Math.max(1, Number(draft.quantity || 1)) });
+                }}
               />
             </Field>
             <Field label="Chuyến bay">
@@ -4538,6 +4596,7 @@ function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderSt
   const batchOrders = batchOrderRows(draft, orders);
   const progress = flightOrderProgress(batchOrders);
   const finance = batchFinanceSummary(draft, orders);
+  const weightAudit = batchWeightAudit(draft, orders);
   const totalWeight = finance.estimatedWeightKg;
   const billingOrderCount = finance.billableOrders.length;
   function updateFlightDate(field, value) {
@@ -4569,7 +4628,15 @@ function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderSt
           </Field>
           <Field label="Sức chứa kg"><input type="number" value={draft.capacityKg} onChange={(event) => setDraft({ ...draft, capacityKg: event.target.value })} /></Field>
           <Field label="Tổng kg cân thực tế cả chuyến">
-            <input type="number" min="0" step="0.01" inputMode="decimal" value={draft.actualWeightKg ?? 0} onChange={(event) => setDraft({ ...draft, actualWeightKg: event.target.value })} />
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              value={draft.actualWeightKg ?? 0}
+              onChange={(event) => setDraft({ ...draft, actualWeightKg: event.target.value })}
+              onBlur={() => setDraft({ ...draft, actualWeightKg: roundWeightUpKg(draft.actualWeightKg) })}
+            />
             <span className="field-hint">Nhập số kg chốt sau khi cân thùng/gửi hàng từ Úc. Nếu để 0, app dùng tổng kg ước tính từ các đơn.</span>
           </Field>
           <Field label="Cước bay AUD/kg">
@@ -4596,9 +4663,36 @@ function BatchModal({ draft, setDraft, batches, orders, openOrder, updateOrderSt
             <strong>{finance.avgActualWeightKg > 0 ? `${kg(finance.avgActualWeightKg)}kg/đơn` : "-"}</strong>
           </div>
           <div>
+            <span>Vênh kg</span>
+            <strong className={weightAudit.hasVariance ? "warn" : ""}>{finance.actualWeightKg > 0 ? `${weightAudit.varianceKg >= 0 ? "+" : ""}${kg(weightAudit.varianceKg)}kg` : "-"}</strong>
+            <small>{finance.actualWeightKg > 0 ? `Chốt ${kg(finance.actualWeightKg)}kg - đơn ${kg(finance.estimatedWeightKg)}kg` : "Nhập kg chốt chuyến để đối soát."}</small>
+          </div>
+          <div>
             <span>Chi cước bay</span>
             <strong>{vnd(finance.actualAirFreightVnd)}</strong>
             <small>{kg(finance.chargeWeightKg)}kg x {aud(finance.freightAudPerKg)} x {vnd(finance.rate)}</small>
+          </div>
+        </section>
+        <section className="batch-weight-audit-list">
+          <div className="batch-modal-checklist-head">
+            <div>
+              <span className="eyebrow">Weight audit</span>
+              <h3>Kiểm kg từng đơn trong chuyến</h3>
+            </div>
+            <em className={weightAudit.missingWeightOrders.length || weightAudit.hasVariance ? "warn" : "ok"}>
+              {weightAudit.missingWeightOrders.length ? `Thiếu kg ${weightAudit.missingWeightOrders.length} đơn` : weightAudit.hasVariance ? `Vênh ${kg(weightAudit.varianceAbsKg)}kg` : "Ổn"}
+            </em>
+          </div>
+          <div className="weight-audit-table">
+            {weightAudit.orderRows.map(({ order, quantity, unitWeightKg, totalWeightKg, share, status }) => (
+              <button className={`weight-audit-row ${status}`} type="button" key={order.id} onClick={() => openOrder(order)}>
+                <strong>{order.product || order.id}</strong>
+                <span>{order.id} · {order.customer || "-"}</span>
+                <span>SL {quantity} × {kg(unitWeightKg)}kg/sp = {kg(totalWeightKg)}kg</span>
+                <em>{status === "missing" ? "Cần điền kg/sp" : finance.actualWeightKg > 0 ? `Tỷ trọng ${Math.round(share * 100)}%` : "Chờ kg chốt chuyến"}</em>
+              </button>
+            ))}
+            {!weightAudit.orderRows.length && <EmptyState title="Chưa có đơn để kiểm kg" body="Gán đơn vào chuyến này, bảng kiểm kg sẽ tự hiện." />}
           </div>
         </section>
         <section className="batch-modal-checklist">

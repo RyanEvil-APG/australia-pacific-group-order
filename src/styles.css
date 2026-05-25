@@ -845,32 +845,37 @@ table {
 
 .flight-overview-table th:nth-child(1),
 .flight-overview-table td:nth-child(1) {
-  width: 18%;
+  width: 16%;
 }
 
 .flight-overview-table th:nth-child(2),
 .flight-overview-table td:nth-child(2) {
-  width: 14%;
+  width: 12%;
 }
 
 .flight-overview-table th:nth-child(3),
 .flight-overview-table td:nth-child(3) {
-  width: 20%;
+  width: 18%;
 }
 
 .flight-overview-table th:nth-child(4),
 .flight-overview-table td:nth-child(4) {
-  width: 22%;
+  width: 17%;
 }
 
 .flight-overview-table th:nth-child(5),
 .flight-overview-table td:nth-child(5) {
-  width: 14%;
+  width: 15%;
 }
 
 .flight-overview-table th:nth-child(6),
 .flight-overview-table td:nth-child(6) {
   width: 12%;
+}
+
+.flight-overview-table th:nth-child(7),
+.flight-overview-table td:nth-child(7) {
+  width: 10%;
 }
 
 .compact-table {
@@ -1209,6 +1214,11 @@ tbody tr.split-bill-row {
 }
 
 .flight-progress-mini .warn {
+  color: #9b2c3a;
+}
+
+.weight-audit-cell strong.warn,
+.weight-audit-cell .warn {
   color: #9b2c3a;
 }
 
@@ -2029,7 +2039,7 @@ tbody tr.split-bill-row {
 
 .batch-weight-panel {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px;
   margin-top: 14px;
   padding: 12px;
@@ -2065,9 +2075,61 @@ tbody tr.split-bill-row {
   font-weight: 950;
 }
 
+.batch-weight-panel strong.warn {
+  color: #9b2c3a;
+}
+
 .batch-weight-panel small {
   margin-top: 4px;
   line-height: 1.35;
+}
+
+.batch-weight-audit-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  background: #fffdf8;
+  border: 1px solid rgba(33, 29, 23, 0.09);
+  border-radius: 8px;
+}
+
+.weight-audit-table {
+  display: grid;
+  gap: 8px;
+}
+
+.weight-audit-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(120px, 0.6fr) minmax(150px, 0.7fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  color: #211d17;
+  background: #fff;
+  border: 1px solid rgba(33, 29, 23, 0.09);
+  border-radius: 8px;
+  text-align: left;
+}
+
+.weight-audit-row.missing,
+.weight-audit-row.review {
+  background: #fff5f1;
+  border-color: rgba(155, 44, 58, 0.18);
+}
+
+.weight-audit-row span,
+.weight-audit-row em {
+  color: #746c61;
+  font-size: 0.76rem;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.weight-audit-row.missing em,
+.weight-audit-row.review em {
+  color: #9b2c3a;
 }
 
 .batch-modal-checklist-head {
@@ -3426,6 +3488,10 @@ tbody tr.split-bill-row {
   }
 
   .flight-order-item {
+    grid-template-columns: 1fr;
+  }
+
+  .weight-audit-row {
     grid-template-columns: 1fr;
   }
 
