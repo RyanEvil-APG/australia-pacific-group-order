@@ -360,6 +360,16 @@ function normalizeCustomerTier(tier) {
   return customerTiers.includes(nextTier) ? nextTier : "Customer";
 }
 
+function normalizeCustomerName(name) {
+  return String(name || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function findCustomerByName(customers, name) {
+  const normalizedName = normalizeCustomerName(name);
+  if (!normalizedName) return null;
+  return (customers || []).find((customer) => normalizeCustomerName(customer.name) === normalizedName) || null;
+}
+
 function normalizeCustomer(customer) {
   return { ...customer, tier: normalizeCustomerTier(customer?.tier) };
 }
@@ -1512,7 +1522,7 @@ function App() {
     const name = String(order.customer || "").trim();
     if (!name) return;
     setCustomers((current) => {
-      const existing = current.find((customer) => customer.name.toLowerCase() === name.toLowerCase());
+      const existing = findCustomerByName(current, name);
       if (existing) {
         return current.map((customer) =>
           customer.id === existing.id
@@ -4632,7 +4642,17 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
   const [previewError, setPreviewError] = React.useState("");
   const lastPreviewUrlRef = React.useRef("");
   const catalogMatch = findProductCatalogMatch(productCatalog, draft);
+  const customerMatch = findCustomerByName(customers, draft.customer);
   const manualWeightLocked = isManualWeightLocked(draft);
+  function applyCustomerToDraft(nameValue) {
+    const match = findCustomerByName(customers, nameValue);
+    setDraft((current) => ({
+      ...current,
+      customer: nameValue,
+      phone: match?.phone || current.phone,
+      customerTier: match ? normalizeCustomerTier(match.tier) : current.customerTier
+    }));
+  }
   const generateCurrentOrderCode = () => {
     setDraft({
       ...draft,
@@ -4822,7 +4842,14 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
               />
             </Field>
             <Field label="Khách hàng">
-              <input list="customer-suggestions" value={draft.customer} onChange={(event) => setDraft({ ...draft, customer: event.target.value })} />
+              <input
+                list="customer-suggestions"
+                value={draft.customer}
+                onChange={(event) => applyCustomerToDraft(event.target.value)}
+                onBlur={(event) => applyCustomerToDraft(event.target.value.trim())}
+                placeholder="Gõ hoặc chọn khách đã lưu"
+              />
+              {customerMatch && <span className="customer-autofill-hit">Đã link khách: {customerMatch.phone || "chưa có SĐT"} · {normalizeCustomerTier(customerMatch.tier)}</span>}
             </Field>
             <Field label="SĐT"><input value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} /></Field>
             <div className="same-customer-helper wide">
@@ -5083,7 +5110,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
         </div>
         </fieldset>
         <datalist id="customer-suggestions">
-          {customers.map((customer) => <option value={customer.name} key={customer.id}>{customer.phone}</option>)}
+          {customers.map((customer) => <option value={customer.name} label={`${customer.phone || "Chưa có SĐT"} · ${normalizeCustomerTier(customer.tier)}`} key={customer.id} />)}
         </datalist>
         <div className="modal-actions">
           <button className="ghost-button" type="button" onClick={close}>Hủy</button>

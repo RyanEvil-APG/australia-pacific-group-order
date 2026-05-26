@@ -3207,6 +3207,19 @@ tbody tr.split-bill-row {
   line-height: 1.45;
 }
 
+.customer-autofill-hit {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px 8px;
+  color: #11664f;
+  background: #e8f7ef;
+  border: 1px solid rgba(17, 102, 79, 0.14);
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
 .split-bill-field {
   grid-column: 1 / -1;
   display: grid;
