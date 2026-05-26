@@ -2352,82 +2352,127 @@ function activeStaffOptions(accounts) {
   return (accounts || []).filter((account) => account.active);
 }
 
-function buildAssigneeWorkStats(orders, batches, accounts) {
-  const activeAccounts = activeStaffOptions(accounts);
-  const rows = [...activeAccounts, { id: "unassigned", displayName: "Chưa gán người phụ trách", role: "staff", initials: "?", color: "#8b8579", active: true }].map((account) => {
-    const assigneeOrders = orders.filter((order) => (account.id === "unassigned" ? !order.assigneeId : order.assigneeId === account.id));
-    const billableOrders = assigneeOrders.filter((order) => !["cancelled", "out_of_stock"].includes(normalizeOrderStatus(order.status)));
-    const completedOrders = billableOrders.filter((order) => ["delivered", "reconciled"].includes(normalizeOrderStatus(order.status)) || order.customerShipped || order.paidInFull);
-    const totalWeightKg = billableOrders.reduce((sum, order) => sum + orderTotalWeightKg(order), 0);
-    const vnWeightKg = billableOrders.reduce((sum, order) => sum + roundWeightUpKg(order.vnActualWeightKg || 0), 0);
-    const revenue = billableOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, findOrderBatch(batches, order), orders).totalThuVnd, 0);
-    const remaining = billableOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, findOrderBatch(batches, order), orders).remainingVnd, 0);
-    const waitingBuy = billableOrders.filter((order) => normalizeOrderStatus(order.status) === "waiting_buy").length;
-    const needVnWeight = billableOrders.filter((order) => normalizeOrderStatus(order.status) === "waiting_vn_weight").length;
-    return {
-      account,
-      totalOrders: billableOrders.length,
-      completedOrders: completedOrders.length,
-      waitingBuy,
-      needVnWeight,
-      totalWeightKg,
-      vnWeightKg,
-      revenue,
-      remaining
-    };
-  });
-  return rows.filter((row) => row.totalOrders > 0 || row.account.id !== "unassigned");
+function commissionYearForOrder(order, batch) {
+  return String(order.customerShippedDate || order.paidInFullDate || order.receivedVnDate || batch?.arrival || batch?.departure || order.orderDate || "Chưa rõ").slice(0, 4);
 }
 
-function StaffWorkSummaryPanel({ orders, batches, accounts, compact = false }) {
-  const rows = buildAssigneeWorkStats(orders, batches, accounts);
-  const totals = rows.reduce(
-    (sum, row) => ({
-      orders: sum.orders + row.totalOrders,
-      completed: sum.completed + row.completedOrders,
-      weightKg: sum.weightKg + row.totalWeightKg,
-      vnWeightKg: sum.vnWeightKg + row.vnWeightKg
-    }),
-    { orders: 0, completed: 0, weightKg: 0, vnWeightKg: 0 }
+function orderMatchesCommissionScope(order, batch, orders, scope) {
+  const status = normalizeOrderStatus(order.status);
+  const finance = orderFinanceForBatch(order, batch, orders);
+  if (["cancelled", "out_of_stock"].includes(status)) return false;
+  if (scope === "completed") return ["delivered", "reconciled"].includes(status) || order.customerShipped || order.paidInFull;
+  if (scope === "paid") return order.paidInFull || finance.remainingVnd <= 0;
+  if (scope === "open") return !isArchivedOrder(order);
+  return true;
+}
+
+function StaffWorkReportPanel({ orders, batches, accounts, openOrder, defaultAssignee = "", compact = false }) {
+  const [selectedAssignee, setSelectedAssignee] = React.useState(defaultAssignee && defaultAssignee !== "all" ? defaultAssignee : "");
+  const [selectedBatch, setSelectedBatch] = React.useState("all");
+  const [selectedYear, setSelectedYear] = React.useState("all");
+  const [scope, setScope] = React.useState("billable");
+  React.useEffect(() => {
+    if (defaultAssignee && defaultAssignee !== "all") setSelectedAssignee(defaultAssignee);
+  }, [defaultAssignee]);
+
+  const assigneeOptions = [...activeStaffOptions(accounts), { id: "unassigned", displayName: "Chưa gán người phụ trách", role: "staff", initials: "?", color: "#8b8579", active: true }];
+  const years = [...new Set(orders.map((order) => commissionYearForOrder(order, findOrderBatch(batches, order))).filter(Boolean))]
+    .sort((a, b) => String(b).localeCompare(String(a)));
+  const filteredOrders = selectedAssignee
+    ? orders
+        .filter((order) => (selectedAssignee === "unassigned" ? !order.assigneeId : order.assigneeId === selectedAssignee))
+        .filter((order) => selectedBatch === "all" || order.batchId === selectedBatch)
+        .filter((order) => selectedYear === "all" || commissionYearForOrder(order, findOrderBatch(batches, order)) === selectedYear)
+        .filter((order) => orderMatchesCommissionScope(order, findOrderBatch(batches, order), orders, scope))
+        .sort((a, b) => compareOrdersForDesk(a, b, batches))
+    : [];
+  const totals = filteredOrders.reduce(
+    (sum, order) => {
+      const finance = orderFinanceForBatch(order, findOrderBatch(batches, order), orders);
+      sum.orders += 1;
+      sum.completed += ["delivered", "reconciled"].includes(normalizeOrderStatus(order.status)) || order.customerShipped || order.paidInFull ? 1 : 0;
+      sum.revenue += finance.totalThuVnd;
+      sum.remaining += finance.remainingVnd;
+      sum.weightKg += orderTotalWeightKg(order);
+      sum.vnWeightKg += roundWeightUpKg(order.vnActualWeightKg || 0);
+      return sum;
+    },
+    { orders: 0, completed: 0, revenue: 0, remaining: 0, weightKg: 0, vnWeightKg: 0 }
   );
+  const selectedAccount = assigneeOptions.find((account) => account.id === selectedAssignee);
   return (
-    <section className={`panel staff-work-panel ${compact ? "compact" : ""}`}>
+    <section className={`panel staff-work-report ${compact ? "compact" : ""}`}>
       <div className="panel-title">
         <div>
-          <span className="eyebrow">Staff workload</span>
-          <h2>Tính công theo người phụ trách</h2>
-        </div>
-        <div className="staff-work-total">
-          <strong>{totals.orders} đơn</strong>
-          <span>{totals.completed} hoàn tất · {kg(totals.weightKg)}kg báo khách</span>
+          <span className="eyebrow">Staff commission</span>
+          <h2>Báo cáo đơn theo người phụ trách</h2>
         </div>
       </div>
-      <div className="staff-work-grid">
-        {rows.map((row) => (
-          <article className="staff-work-card" key={row.account.id}>
-            <div className="staff-work-person">
-              <AccountAvatar account={row.account} />
-              <div>
-                <strong>{row.account.displayName || row.account.username}</strong>
-                <span>{roleLabel(row.account.role)}</span>
-              </div>
-            </div>
-            <div className="staff-work-stats">
-              <span><b>{row.totalOrders}</b> đơn</span>
-              <span><b>{row.completedOrders}</b> hoàn tất</span>
-              <span><b>{row.waitingBuy}</b> chờ mua</span>
-              <span><b>{row.needVnWeight}</b> chờ cân VN</span>
-            </div>
-            <div className="staff-work-money">
-              <span>Doanh số <strong>{compactVnd(row.revenue)}</strong></span>
-              <span>Còn thu <strong className={row.remaining ? "money-due" : ""}>{compactVnd(row.remaining)}</strong></span>
-              <span>Kg báo khách <strong>{kg(row.totalWeightKg)}kg</strong></span>
-              <span>Kg VN <strong>{row.vnWeightKg ? `${kg(row.vnWeightKg)}kg` : "-"}</strong></span>
-            </div>
-          </article>
-        ))}
-        {!rows.length && <EmptyState title="Chưa có dữ liệu tính công" body="Khi đơn được gán người phụ trách, bảng này sẽ tự tổng hợp theo filter đang chọn." />}
+      <div className="staff-report-controls">
+        <label>
+          Người phụ trách
+          <select value={selectedAssignee} onChange={(event) => setSelectedAssignee(event.target.value)}>
+            <option value="">Chọn người phụ trách</option>
+            {assigneeOptions.map((account) => (
+              <option value={account.id} key={account.id}>{account.displayName || account.username}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Chuyến bay
+          <select value={selectedBatch} onChange={(event) => setSelectedBatch(event.target.value)}>
+            <option value="all">Tất cả chuyến bay</option>
+            {sortedFlightBatches(batches).map((batch) => (
+              <option value={batch.id} key={batch.id}>{batch.code || batch.id}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Năm
+          <select value={selectedYear} onChange={(event) => setSelectedYear(event.target.value)}>
+            <option value="all">Tất cả năm</option>
+            {years.map((year) => <option value={year} key={year}>{year === "Chưa" ? "Chưa rõ năm" : `Năm ${year}`}</option>)}
+          </select>
+        </label>
+        <label>
+          Nhóm đơn
+          <select value={scope} onChange={(event) => setScope(event.target.value)}>
+            <option value="billable">Đơn đã bán / tính công</option>
+            <option value="open">Đơn đang xử lý</option>
+            <option value="completed">Đã giao / đã đối soát</option>
+            <option value="paid">Đã nhận đủ tiền</option>
+          </select>
+        </label>
       </div>
+      {!selectedAssignee ? (
+        <EmptyState title="Chọn người phụ trách để xem đơn" body="Sau khi chọn nhân viên, app sẽ lên list đơn theo chuyến bay, theo năm và nhóm đơn để tính công cho đúng." />
+      ) : (
+        <>
+          <div className="staff-report-summary">
+            <div><span>Người phụ trách</span><strong>{selectedAccount?.displayName || "-"}</strong></div>
+            <div><span>Số đơn</span><strong>{totals.orders}</strong></div>
+            <div><span>Hoàn tất</span><strong>{totals.completed}</strong></div>
+            <div><span>Doanh số</span><strong>{compactVnd(totals.revenue)}</strong></div>
+            <div><span>Còn thu</span><strong className={totals.remaining ? "money-due" : ""}>{compactVnd(totals.remaining)}</strong></div>
+            <div><span>Kg báo khách</span><strong>{kg(totals.weightKg)}kg</strong></div>
+          </div>
+          <div className="staff-order-list">
+            {filteredOrders.map((order) => {
+              const batch = findOrderBatch(batches, order);
+              const finance = orderFinanceForBatch(order, batch, orders);
+              return (
+                <button className="staff-order-row" type="button" key={order.id} onClick={() => openOrder(order)}>
+                  <ProductThumbImage item={order} size={18} />
+                  <span><strong>{order.id}</strong><em>{order.customer || "-"} · {order.product || "-"}</em></span>
+                  <span><strong>{batch?.code || "Chưa xếp"}</strong><em>{statusLabel(order.status)}</em></span>
+                  <span><strong>{compactVnd(finance.totalThuVnd)}</strong><em>Còn {compactVnd(finance.remainingVnd)} · {kg(orderTotalWeightKg(order))}kg</em></span>
+                </button>
+              );
+            })}
+            {!filteredOrders.length && <EmptyState title="Không có đơn theo filter này" body="Đổi chuyến bay, năm hoặc nhóm đơn để kiểm tra lại." />}
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -2686,7 +2731,7 @@ function OrdersView(props) {
           <strong>Mới nhất lên trên</strong>
         </div>
       </section>
-      <StaffWorkSummaryPanel orders={mainOrders} batches={props.batches} accounts={props.accounts} />
+      <StaffWorkReportPanel orders={props.orders} batches={props.batches} accounts={props.accounts} openOrder={props.openOrder} defaultAssignee={props.assigneeFilter} />
       <div className="panel">
         <div className="panel-title">
           <div>
@@ -4353,7 +4398,7 @@ function CashflowView({ orders, filteredOrders, batches, accounts, query, setQue
         dateTo={dateTo}
         setDateTo={setDateTo}
       />
-      <StaffWorkSummaryPanel orders={scopedOrders} batches={batches} accounts={accounts} compact />
+      <StaffWorkReportPanel orders={scopedOrders} batches={batches} accounts={accounts} openOrder={openOrder} defaultAssignee={assigneeFilter} compact />
       <div className="panel-title standalone">
         <div>
           <span className="eyebrow">Cashflow</span>
