@@ -310,7 +310,7 @@ p {
 
 .filter-panel {
   display: grid;
-  grid-template-columns: minmax(260px, 1.35fr) repeat(4, minmax(126px, 0.65fr));
+  grid-template-columns: minmax(260px, 1.25fr) repeat(5, minmax(118px, 0.62fr));
   gap: 10px;
   padding: 12px;
 }
@@ -709,6 +709,104 @@ th span {
 .orders-work-summary strong {
   color: #211d17;
   font-size: 0.98rem;
+}
+
+.staff-work-panel {
+  padding: 0;
+}
+
+.staff-work-total {
+  min-width: 160px;
+  text-align: right;
+}
+
+.staff-work-total strong,
+.staff-work-total span {
+  display: block;
+}
+
+.staff-work-total span {
+  margin-top: 3px;
+  color: #746c61;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.staff-work-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+.staff-work-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: #fffdf8;
+  border: 1px solid rgba(33, 29, 23, 0.09);
+  border-radius: 8px;
+}
+
+.staff-work-person,
+.table-person-cell {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.staff-work-person strong,
+.staff-work-person span,
+.table-person-cell span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staff-work-person span {
+  color: #746c61;
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.staff-work-stats,
+.staff-work-money {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.staff-work-stats span,
+.staff-work-money span {
+  display: block;
+  padding: 8px;
+  color: #6f665a;
+  background: #f8f3ea;
+  border-radius: 8px;
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
+.staff-work-stats b,
+.staff-work-money strong {
+  display: block;
+  margin-top: 3px;
+  color: #17130f;
+  font-size: 1rem;
+}
+
+.staff-work-panel.compact .staff-work-grid {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.table-person-cell .account-avatar {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  font-size: 0.72rem;
 }
 
 .archive-panel {
@@ -3432,6 +3530,10 @@ tbody tr.split-bill-row {
 
   .orders-work-summary {
     grid-template-columns: 1fr;
+  }
+
+  .staff-work-total {
+    text-align: left;
   }
 
   .archive-tools {

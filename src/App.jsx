@@ -1280,6 +1280,7 @@ function App() {
   const [query, setQuery] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("all");
   const [batchFilter, setBatchFilter] = React.useState("all");
+  const [assigneeFilter, setAssigneeFilter] = React.useState("all");
   const [dateFrom, setDateFrom] = React.useState("");
   const [dateTo, setDateTo] = React.useState("");
   const [modal, setModal] = React.useState(null);
@@ -1466,11 +1467,12 @@ function App() {
       const matchesQuery = text.includes(normalizedQuery);
       const matchesStatus = statusFilter === "all" || normalizeOrderStatus(order.status) === statusFilter;
       const matchesBatch = batchFilter === "all" || order.batchId === batchFilter;
+      const matchesAssignee = assigneeFilter === "all" || (assigneeFilter === "unassigned" ? !order.assigneeId : order.assigneeId === assigneeFilter);
       const matchesFrom = !dateFrom || String(order.orderDate || "") >= dateFrom;
       const matchesTo = !dateTo || String(order.orderDate || "") <= dateTo;
-      return matchesQuery && matchesStatus && matchesBatch && matchesFrom && matchesTo;
+      return matchesQuery && matchesStatus && matchesBatch && matchesAssignee && matchesFrom && matchesTo;
     }).sort((a, b) => compareOrdersForDesk(a, b, batches));
-  }, [orders, batches, deferredQuery, statusFilter, batchFilter, dateFrom, dateTo]);
+  }, [orders, batches, deferredQuery, statusFilter, batchFilter, assigneeFilter, dateFrom, dateTo]);
 
   const totals = React.useMemo(() => {
     return orders.reduce(
@@ -2028,6 +2030,8 @@ function App() {
             setStatusFilter={setStatusFilter}
             batchFilter={batchFilter}
             setBatchFilter={setBatchFilter}
+            assigneeFilter={assigneeFilter}
+            setAssigneeFilter={setAssigneeFilter}
             dateFrom={dateFrom}
             setDateFrom={setDateFrom}
             dateTo={dateTo}
@@ -2047,6 +2051,7 @@ function App() {
             orders={filteredOrders}
             allOrders={orders}
             batches={batches}
+            accounts={accounts}
             customers={customers}
             query={query}
             setQuery={setQuery}
@@ -2054,6 +2059,8 @@ function App() {
             setStatusFilter={setStatusFilter}
             batchFilter={batchFilter}
             setBatchFilter={setBatchFilter}
+            assigneeFilter={assigneeFilter}
+            setAssigneeFilter={setAssigneeFilter}
             dateFrom={dateFrom}
             setDateFrom={setDateFrom}
             dateTo={dateTo}
@@ -2068,6 +2075,9 @@ function App() {
           <BuyingChecklistView
             batches={batches}
             orders={orders}
+            accounts={accounts}
+            assigneeFilter={assigneeFilter}
+            setAssigneeFilter={setAssigneeFilter}
             focusBatchId={buyingFocusBatchId}
             setFocusBatchId={setBuyingFocusBatchId}
             openOrder={openOrder}
@@ -2119,7 +2129,28 @@ function App() {
           />
         )}
         {activeView === "cashflow" && (
-          <CashflowView orders={orders} batches={batches} transactions={transactions} openTransaction={openTransaction} openOrder={openOrder} canSeeProfit={canSeeProfit} />
+          <CashflowView
+            orders={orders}
+            filteredOrders={filteredOrders}
+            batches={batches}
+            accounts={accounts}
+            query={query}
+            setQuery={setQuery}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            batchFilter={batchFilter}
+            setBatchFilter={setBatchFilter}
+            assigneeFilter={assigneeFilter}
+            setAssigneeFilter={setAssigneeFilter}
+            dateFrom={dateFrom}
+            setDateFrom={setDateFrom}
+            dateTo={dateTo}
+            setDateTo={setDateTo}
+            transactions={transactions}
+            openTransaction={openTransaction}
+            openOrder={openOrder}
+            canSeeProfit={canSeeProfit}
+          />
         )}
         {activeView === "tasks" && <TasksView tasks={tasks} accounts={accounts} orders={orders} batches={batches} openTask={openTask} openOrder={openOrder} openAfterArrival={() => setActiveView("after-arrival")} />}
       </main>
@@ -2317,7 +2348,91 @@ function OpsReminderPanel({ reminders, openOrder, openAfterArrival }) {
   );
 }
 
-function FilterBar({ query, setQuery, statusFilter, setStatusFilter, batchFilter, setBatchFilter, batches, dateFrom, setDateFrom, dateTo, setDateTo }) {
+function activeStaffOptions(accounts) {
+  return (accounts || []).filter((account) => account.active);
+}
+
+function buildAssigneeWorkStats(orders, batches, accounts) {
+  const activeAccounts = activeStaffOptions(accounts);
+  const rows = [...activeAccounts, { id: "unassigned", displayName: "Chưa gán người phụ trách", role: "staff", initials: "?", color: "#8b8579", active: true }].map((account) => {
+    const assigneeOrders = orders.filter((order) => (account.id === "unassigned" ? !order.assigneeId : order.assigneeId === account.id));
+    const billableOrders = assigneeOrders.filter((order) => !["cancelled", "out_of_stock"].includes(normalizeOrderStatus(order.status)));
+    const completedOrders = billableOrders.filter((order) => ["delivered", "reconciled"].includes(normalizeOrderStatus(order.status)) || order.customerShipped || order.paidInFull);
+    const totalWeightKg = billableOrders.reduce((sum, order) => sum + orderTotalWeightKg(order), 0);
+    const vnWeightKg = billableOrders.reduce((sum, order) => sum + roundWeightUpKg(order.vnActualWeightKg || 0), 0);
+    const revenue = billableOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, findOrderBatch(batches, order), orders).totalThuVnd, 0);
+    const remaining = billableOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, findOrderBatch(batches, order), orders).remainingVnd, 0);
+    const waitingBuy = billableOrders.filter((order) => normalizeOrderStatus(order.status) === "waiting_buy").length;
+    const needVnWeight = billableOrders.filter((order) => normalizeOrderStatus(order.status) === "waiting_vn_weight").length;
+    return {
+      account,
+      totalOrders: billableOrders.length,
+      completedOrders: completedOrders.length,
+      waitingBuy,
+      needVnWeight,
+      totalWeightKg,
+      vnWeightKg,
+      revenue,
+      remaining
+    };
+  });
+  return rows.filter((row) => row.totalOrders > 0 || row.account.id !== "unassigned");
+}
+
+function StaffWorkSummaryPanel({ orders, batches, accounts, compact = false }) {
+  const rows = buildAssigneeWorkStats(orders, batches, accounts);
+  const totals = rows.reduce(
+    (sum, row) => ({
+      orders: sum.orders + row.totalOrders,
+      completed: sum.completed + row.completedOrders,
+      weightKg: sum.weightKg + row.totalWeightKg,
+      vnWeightKg: sum.vnWeightKg + row.vnWeightKg
+    }),
+    { orders: 0, completed: 0, weightKg: 0, vnWeightKg: 0 }
+  );
+  return (
+    <section className={`panel staff-work-panel ${compact ? "compact" : ""}`}>
+      <div className="panel-title">
+        <div>
+          <span className="eyebrow">Staff workload</span>
+          <h2>Tính công theo người phụ trách</h2>
+        </div>
+        <div className="staff-work-total">
+          <strong>{totals.orders} đơn</strong>
+          <span>{totals.completed} hoàn tất · {kg(totals.weightKg)}kg báo khách</span>
+        </div>
+      </div>
+      <div className="staff-work-grid">
+        {rows.map((row) => (
+          <article className="staff-work-card" key={row.account.id}>
+            <div className="staff-work-person">
+              <AccountAvatar account={row.account} />
+              <div>
+                <strong>{row.account.displayName || row.account.username}</strong>
+                <span>{roleLabel(row.account.role)}</span>
+              </div>
+            </div>
+            <div className="staff-work-stats">
+              <span><b>{row.totalOrders}</b> đơn</span>
+              <span><b>{row.completedOrders}</b> hoàn tất</span>
+              <span><b>{row.waitingBuy}</b> chờ mua</span>
+              <span><b>{row.needVnWeight}</b> chờ cân VN</span>
+            </div>
+            <div className="staff-work-money">
+              <span>Doanh số <strong>{compactVnd(row.revenue)}</strong></span>
+              <span>Còn thu <strong className={row.remaining ? "money-due" : ""}>{compactVnd(row.remaining)}</strong></span>
+              <span>Kg báo khách <strong>{kg(row.totalWeightKg)}kg</strong></span>
+              <span>Kg VN <strong>{row.vnWeightKg ? `${kg(row.vnWeightKg)}kg` : "-"}</strong></span>
+            </div>
+          </article>
+        ))}
+        {!rows.length && <EmptyState title="Chưa có dữ liệu tính công" body="Khi đơn được gán người phụ trách, bảng này sẽ tự tổng hợp theo filter đang chọn." />}
+      </div>
+    </section>
+  );
+}
+
+function FilterBar({ query, setQuery, statusFilter, setStatusFilter, batchFilter, setBatchFilter, assigneeFilter, setAssigneeFilter, accounts, batches, dateFrom, setDateFrom, dateTo, setDateTo }) {
   return (
     <section className="filter-panel">
       <div className="search-box">
@@ -2339,6 +2454,15 @@ function FilterBar({ query, setQuery, statusFilter, setStatusFilter, batchFilter
             {batch.code || batch.id}
           </option>
         ))}
+      </select>
+      <select value={assigneeFilter} onChange={(event) => setAssigneeFilter(event.target.value)} aria-label="Lọc người phụ trách">
+        <option value="all">Tất cả người phụ trách</option>
+        {activeStaffOptions(accounts).map((account) => (
+          <option value={account.id} key={account.id}>
+            {account.displayName || account.username}
+          </option>
+        ))}
+        <option value="unassigned">Chưa gán người phụ trách</option>
       </select>
       <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
       <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
@@ -2453,6 +2577,7 @@ function OverviewView(props) {
         <OrdersTable
           orders={overviewFilteredOrders.slice(0, 10)}
           batches={batches}
+          accounts={accounts}
           openOrder={openOrder}
           compact
           canSeeProfit={canSeeProfit}
@@ -2561,6 +2686,7 @@ function OrdersView(props) {
           <strong>Mới nhất lên trên</strong>
         </div>
       </section>
+      <StaffWorkSummaryPanel orders={mainOrders} batches={props.batches} accounts={props.accounts} />
       <div className="panel">
         <div className="panel-title">
           <div>
@@ -2572,7 +2698,7 @@ function OrdersView(props) {
             Thêm đơn
           </button>
         </div>
-        <OrdersTable orders={mainOrders} batches={props.batches} openOrder={props.openOrder} canSeeProfit={props.canSeeProfit} emptyTitle={archiveFocused ? "Không có đơn archive theo filter này" : "Không còn đơn đang xử lý"} emptyBody={archiveFocused ? "Đổi filter để xem nhóm đơn khác." : "Đơn đã giao hoặc hủy được chuyển xuống archive bên dưới để màn vận hành gọn hơn."} />
+        <OrdersTable orders={mainOrders} batches={props.batches} accounts={props.accounts} openOrder={props.openOrder} canSeeProfit={props.canSeeProfit} emptyTitle={archiveFocused ? "Không có đơn archive theo filter này" : "Không còn đơn đang xử lý"} emptyBody={archiveFocused ? "Đổi filter để xem nhóm đơn khác." : "Đơn đã giao hoặc hủy được chuyển xuống archive bên dưới để màn vận hành gọn hơn."} />
       </div>
       {!archiveFocused && (
         <div className="panel archive-panel">
@@ -2599,7 +2725,7 @@ function OrdersView(props) {
                   </span>
                   <b>{group.orders.length}</b>
                 </summary>
-                <OrdersTable orders={group.orders} batches={props.batches} openOrder={props.openOrder} canSeeProfit={props.canSeeProfit} compact emptyTitle="Không có đơn trong nhóm này" emptyBody="Đổi nhóm archive hoặc filter để xem nhóm khác." />
+                <OrdersTable orders={group.orders} batches={props.batches} accounts={props.accounts} openOrder={props.openOrder} canSeeProfit={props.canSeeProfit} compact emptyTitle="Không có đơn trong nhóm này" emptyBody="Đổi nhóm archive hoặc filter để xem nhóm khác." />
               </details>
             ))}
             {!archiveGroups.length && <EmptyState title="Chưa có đơn đã giao hoặc hủy" body="Khi đơn hoàn tất, app tự đưa xuống đây theo chuyến bay hoặc theo năm." />}
@@ -2645,7 +2771,7 @@ function ProductCell({ order, batch = null, orders = [] }) {
   );
 }
 
-function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit, emptyTitle = "Chưa có đơn hàng", emptyBody = "Bấm Thêm đơn để nhập đơn thật. Dữ liệu demo đã được bỏ." }) {
+function OrdersTable({ orders, batches, accounts = [], openOrder, compact, canSeeProfit, emptyTitle = "Chưa có đơn hàng", emptyBody = "Bấm Thêm đơn để nhập đơn thật. Dữ liệu demo đã được bỏ." }) {
   const rowLimit = compact ? 10 : 120;
   const visibleOrders = orders.slice(0, rowLimit);
   return (
@@ -2656,6 +2782,7 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit, emptyT
             <th>Mã đơn</th>
             <th>Khách</th>
             <th>Sản phẩm<br /><span>Số lượng/kg</span></th>
+            <th>Phụ trách</th>
             <th>Tình trạng</th>
             <th>Chuyến bay<br /><span>Deadline mua</span></th>
             <th>{compact ? "Thu/Còn" : "Tài chính"}</th>
@@ -2665,11 +2792,18 @@ function OrdersTable({ orders, batches, openOrder, compact, canSeeProfit, emptyT
           {visibleOrders.map((order) => {
             const batch = batches.find((item) => item.id === order.batchId);
             const finance = orderFinanceForBatch(order, batch, orders);
+            const assignee = accounts.find((account) => account.id === order.assigneeId);
             return (
               <tr key={order.id} className={order.splitBill ? "split-bill-row" : ""} onClick={() => openOrder(order)}>
                 <td data-label="Mã đơn"><strong>{order.id}</strong><span>{order.orderDate}</span><span>{order.source}</span></td>
                 <td data-label="Khách">{order.customer}<span>{order.phone}</span></td>
                 <td data-label="Sản phẩm"><ProductCell order={order} batch={batch} orders={orders} /></td>
+                <td data-label="Phụ trách">
+                  <div className="table-person-cell">
+                    <AccountAvatar account={assignee} />
+                    <span>{assignee?.displayName || "Chưa gán"}</span>
+                  </div>
+                </td>
                 <td data-label="Tình trạng"><span className={`status-chip ${normalizeOrderStatus(order.status)}`}>{statusLabel(order.status)}</span></td>
                 <td data-label="Chuyến bay">
                   {batch?.code || "Chưa xếp"}
@@ -3208,7 +3342,7 @@ function StockoutsView({ batches, orders, openOrder, updateOrderStatus, moveOutO
   );
 }
 
-function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, openOrder, openBatch, updateOrderStatus, canEditOrder }) {
+function BuyingChecklistView({ batches, orders, accounts, assigneeFilter, setAssigneeFilter, focusBatchId, setFocusBatchId, openOrder, openBatch, updateOrderStatus, canEditOrder }) {
   const allSortedBatches = sortedFlightBatches(batches);
   const sortedBatches = upcomingFlightBatches(batches, 3);
   const topBatchIds = new Set(sortedBatches.map((batch) => batch.id));
@@ -3223,7 +3357,8 @@ function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, o
   const manualBatch = focusBatchId !== "all" && focusBatchId !== "unassigned" ? allSortedBatches.find((batch) => batch.id === focusBatchId) : null;
   const scopedVisibleBatches = manualBatch && !visibleBatches.length ? [manualBatch] : visibleBatches;
   const visibleUnassigned = focusBatchId === "unassigned" ? unassignedOrders : [];
-  const allVisibleOrders = [...scopedVisibleBatches.flatMap((batch) => orders.filter((order) => order.batchId === batch.id)), ...visibleUnassigned];
+  const allVisibleOrders = [...scopedVisibleBatches.flatMap((batch) => orders.filter((order) => order.batchId === batch.id)), ...visibleUnassigned]
+    .filter((order) => assigneeFilter === "all" || (assigneeFilter === "unassigned" ? !order.assigneeId : order.assigneeId === assigneeFilter));
   const activeWorkflowOrders = allVisibleOrders.filter((order) => packingWorkflowStatuses.some((status) => status.id === normalizeOrderStatus(order.status)));
   const progress = flightOrderProgress(allVisibleOrders);
   const activeBatch = allSortedBatches.find((batch) => batch.id === focusBatchId);
@@ -3291,6 +3426,15 @@ function BuyingChecklistView({ batches, orders, focusBatchId, setFocusBatchId, o
               Chưa xếp chuyến ({unassignedOrders.length})
             </button>
           )}
+          <select className="buying-scope-select" value={assigneeFilter} onChange={(event) => setAssigneeFilter(event.target.value)}>
+            <option value="all">Tất cả người phụ trách</option>
+            {activeStaffOptions(accounts).map((account) => (
+              <option value={account.id} key={account.id}>
+                {account.displayName || account.username}
+              </option>
+            ))}
+            <option value="unassigned">Chưa gán người phụ trách</option>
+          </select>
         </div>
         <div className="buying-progress-strip">
           {progressItems.map((item) => {
@@ -4172,7 +4316,8 @@ function AfterArrivalView({ orders, batches, accounts, currentAccountId, openOrd
   );
 }
 
-function CashflowView({ orders, batches, transactions, openTransaction, openOrder, canSeeProfit }) {
+function CashflowView({ orders, filteredOrders, batches, accounts, query, setQuery, statusFilter, setStatusFilter, batchFilter, setBatchFilter, assigneeFilter, setAssigneeFilter, dateFrom, setDateFrom, dateTo, setDateTo, transactions, openTransaction, openOrder, canSeeProfit }) {
+  const scopedOrders = Array.isArray(filteredOrders) ? filteredOrders : orders;
   const totalsByBatch = batches.map((batch) => {
     const finance = batchFinanceSummary(batch, orders);
     return {
@@ -4181,7 +4326,7 @@ function CashflowView({ orders, batches, transactions, openTransaction, openOrde
       cost: finance.adjustedCost
     };
   });
-  const reconciliationOrders = orders
+  const reconciliationOrders = scopedOrders
     .map((order) => {
       const batch = findOrderBatch(batches, order);
       const finance = orderFinanceForBatch(order, batch, orders);
@@ -4192,6 +4337,23 @@ function CashflowView({ orders, batches, transactions, openTransaction, openOrde
 
   return (
     <div className="screen-stack">
+      <FilterBar
+        query={query}
+        setQuery={setQuery}
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
+        batchFilter={batchFilter}
+        setBatchFilter={setBatchFilter}
+        assigneeFilter={assigneeFilter}
+        setAssigneeFilter={setAssigneeFilter}
+        accounts={accounts}
+        batches={batches}
+        dateFrom={dateFrom}
+        setDateFrom={setDateFrom}
+        dateTo={dateTo}
+        setDateTo={setDateTo}
+      />
+      <StaffWorkSummaryPanel orders={scopedOrders} batches={batches} accounts={accounts} compact />
       <div className="panel-title standalone">
         <div>
           <span className="eyebrow">Cashflow</span>
