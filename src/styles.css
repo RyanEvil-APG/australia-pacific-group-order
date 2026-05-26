@@ -239,6 +239,7 @@ p {
 .primary-button,
 .ghost-button,
 .danger-button,
+.secondary-button,
 .icon-button {
   min-height: 40px;
   border-radius: 8px;
@@ -247,7 +248,8 @@ p {
 
 .primary-button,
 .ghost-button,
-.danger-button {
+.danger-button,
+.secondary-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -269,12 +271,21 @@ p {
   border: 1px solid rgba(33, 29, 23, 0.12);
 }
 
+.secondary-button {
+  color: #214f7e;
+  background: #eef5ff;
+  border: 1px solid rgba(33, 79, 126, 0.18);
+}
+
 .danger-button {
   color: #fffaf0;
   background: #9b2c3a;
   border: 1px solid #9b2c3a;
 }
 
+.secondary-button:disabled,
+.primary-button:disabled,
+.ghost-button:disabled,
 .danger-button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -3171,6 +3182,29 @@ tbody tr.split-bill-row {
 
 .form-grid label.wide {
   grid-column: 1 / -1;
+}
+
+.same-customer-helper {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 5px;
+  padding: 10px 12px;
+  color: #5e554a;
+  background: #eef5ff;
+  border: 1px solid rgba(33, 79, 126, 0.14);
+  border-radius: 8px;
+}
+
+.same-customer-helper strong {
+  color: #214f7e;
+  font-size: 0.86rem;
+}
+
+.same-customer-helper span {
+  color: #5b6570;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.45;
 }
 
 .split-bill-field {

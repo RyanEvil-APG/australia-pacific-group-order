@@ -1604,6 +1604,7 @@ function App() {
   function saveOrder(event) {
     event.preventDefault();
     if (!canEditOrder(draft)) return;
+    const submitIntent = event.nativeEvent?.submitter?.value || "save";
     const chemistFallback = chemistPreviewFromUrl(draft.productUrl);
     const quantity = Math.max(1, Number(draft.quantity || 1));
     const unitWeightKg = roundWeightUpKg(draft.unitWeightKg ?? 0);
@@ -1640,11 +1641,31 @@ function App() {
       createdAt: draft.createdAt || existingOrder?.createdAt || nowIso,
       updatedAt: nowIso
     });
-    setOrders((current) => {
-      const exists = current.some((order) => order.id === nextOrder.id);
-      return exists ? current.map((order) => (order.id === nextOrder.id ? nextOrder : order)) : [nextOrder, ...current];
-    });
+    const exists = orders.some((order) => order.id === nextOrder.id);
+    const nextOrders = exists ? orders.map((order) => (order.id === nextOrder.id ? nextOrder : order)) : [nextOrder, ...orders];
+    setOrders(nextOrders);
     upsertCustomerFromOrder(nextOrder);
+    if (submitIntent === "save-and-add-same-customer") {
+      const nextBatch = findOrderBatch(batches, nextOrder);
+      setDraft({
+        ...emptyOrder,
+        orderDate: nextOrder.orderDate || today(),
+        customer: nextOrder.customer || "",
+        phone: nextOrder.phone || "",
+        customerTier: normalizeCustomerTier(nextOrder.customerTier),
+        batchId: nextOrder.batchId || "",
+        supervisorId: nextOrder.supervisorId || defaultOrderPeople().supervisorId,
+        assigneeId: nextOrder.assigneeId || defaultOrderPeople().assigneeId,
+        buyerId: nextOrder.buyerId || defaultOrderPeople().buyerId,
+        status: "waiting_buy",
+        intlShippingAud: batchHasPricing(nextBatch) ? money(nextBatch.freightAud) : money(nextOrder.intlShippingAud),
+        exchangeRate: batchHasPricing(nextBatch) ? batchExchangeRate(batches, nextBatch?.id) : money(nextOrder.exchangeRate) || exchangeRate,
+        finalWeightRateVnd: money(nextOrder.finalWeightRateVnd) || defaultFinalWeightRateVnd,
+        id: generateOrderCode({ orderDate: nextOrder.orderDate || today(), batchId: nextOrder.batchId || "" }, nextBatch, nextOrders)
+      });
+      setModal("order");
+      return;
+    }
     setModal(null);
   }
 
@@ -4804,6 +4825,10 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
               <input list="customer-suggestions" value={draft.customer} onChange={(event) => setDraft({ ...draft, customer: event.target.value })} />
             </Field>
             <Field label="SĐT"><input value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} /></Field>
+            <div className="same-customer-helper wide">
+              <strong>Khách mua nhiều sản phẩm?</strong>
+              <span>Mỗi sản phẩm nên là 1 dòng order riêng để check ảnh, kg, hết hàng và trạng thái mua riêng. Bấm Lưu & thêm SP cùng khách để giữ lại khách/chuyến bay/người phụ trách.</span>
+            </div>
             <Field label="Hạng khách">
               <select value={draft.customerTier} onChange={(event) => setDraft({ ...draft, customerTier: event.target.value })}>
                 {customerTiers.map((tier) => <option key={tier}>{tier}</option>)}
@@ -5063,7 +5088,8 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
         <div className="modal-actions">
           <button className="ghost-button" type="button" onClick={close}>Hủy</button>
           <button className="danger-button" type="button" disabled={!canEdit} onClick={() => remove(draft.id)}><Trash2 size={16} /> Xóa</button>
-          <button className="primary-button" type="submit" disabled={!canEdit}><CheckCircle2 size={17} /> {canEdit ? "Lưu đơn" : "Cần Ryan cấp quyền"}</button>
+          <button className="secondary-button" type="submit" value="save-and-add-same-customer" disabled={!canEdit || !String(draft.customer || "").trim()}><Plus size={16} /> Lưu & thêm SP cùng khách</button>
+          <button className="primary-button" type="submit" value="save" disabled={!canEdit}><CheckCircle2 size={17} /> {canEdit ? "Lưu đơn" : "Cần Ryan cấp quyền"}</button>
         </div>
       </form>
     </ModalShell>
