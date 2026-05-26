@@ -1303,6 +1303,7 @@ function App() {
 
   const activeAccount = accounts.find((account) => account.id === currentAccountId) ?? accounts[0];
   const canSeeProfit = activeAccount?.role === "admin" || activeAccount?.role === "general_manager";
+  const canManageClosedOrders = activeAccount?.role === "admin" || activeAccount?.role === "general_manager";
   const canManageUsers = activeAccount?.id === "ryan";
 
   const knownDemoOrderIds = React.useMemo(
@@ -1608,7 +1609,7 @@ function App() {
     if (!order) return true;
     const batch = findOrderBatch(batches, order);
     if (!orderIsInVn(order, batch)) return true;
-    return activeAccount?.id === "ryan";
+    return canManageClosedOrders;
   }
 
   function saveOrder(event) {
@@ -4032,7 +4033,7 @@ function FlightOrderQuickActions({ order, openOrder, updateOrderStatus, canEditO
   const editable = !canEditOrder || canEditOrder(order);
   return (
     <div className="flight-order-actions" onClick={(event) => event.stopPropagation()}>
-      {!editable && <em className="locked-action">Cần Ryan cấp quyền</em>}
+      {!editable && <em className="locked-action">Cần quyền quản lý</em>}
       {status === "waiting_buy" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "purchased")}>Đã mua</button>}
       {status === "waiting_buy" && <button className="warning-action" type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "out_of_stock")}>Hết hàng</button>}
       {status === "out_of_stock" && <button type="button" disabled={!editable} onClick={() => updateOrderStatus(order.id, "waiting_buy")}>Mua lại</button>}
@@ -4284,7 +4285,7 @@ function AfterArrivalView({ orders, batches, accounts, currentAccountId, openOrd
                           <span>{order.customer || "-"} · {batch?.code || "Chưa xếp chuyến"}</span>
                           <span>Về VN {order.receivedVnDate || batch?.arrival || "-"}</span>
                         </div>
-                        {!canFullEdit && <div className="arrival-lock-note">Staff chỉ cập nhật cân/kho/giao/thu ở tab này. Sửa chi tiết đơn đã về cần Ryan.</div>}
+                        {!canFullEdit && <div className="arrival-lock-note">Staff chỉ cập nhật cân/kho/giao/thu ở tab này. Sửa chi tiết đơn đã về cần Admin hoặc General Manager.</div>}
                         <label className={`ops-check ${receivedChecked ? "done" : ""}`}>
                           <input type="checkbox" checked={receivedChecked} disabled={shippedChecked || !editable} onChange={(event) => setReceived(order, event.target.checked)} />
                           <span>Đã về VN</span>
@@ -4813,7 +4814,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
       <form onSubmit={save}>
         {!canEdit && (
           <div className="permission-lock-banner">
-            Đơn này đã về VN. Account staff chỉ được xem, cần xin Ryan cấp quyền nếu muốn sửa đơn đã về.
+            Đơn này đã về VN. Account staff chỉ được xem, cần Admin hoặc General Manager nếu muốn sửa chi tiết đơn đã về.
           </div>
         )}
         <fieldset disabled={!canEdit} className="modal-fieldset">
@@ -5116,7 +5117,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
           <button className="ghost-button" type="button" onClick={close}>Hủy</button>
           <button className="danger-button" type="button" disabled={!canEdit} onClick={() => remove(draft.id)}><Trash2 size={16} /> Xóa</button>
           <button className="secondary-button" type="submit" value="save-and-add-same-customer" disabled={!canEdit || !String(draft.customer || "").trim()}><Plus size={16} /> Lưu & thêm SP cùng khách</button>
-          <button className="primary-button" type="submit" value="save" disabled={!canEdit}><CheckCircle2 size={17} /> {canEdit ? "Lưu đơn" : "Cần Ryan cấp quyền"}</button>
+          <button className="primary-button" type="submit" value="save" disabled={!canEdit}><CheckCircle2 size={17} /> {canEdit ? "Lưu đơn" : "Cần quyền quản lý"}</button>
         </div>
       </form>
     </ModalShell>
