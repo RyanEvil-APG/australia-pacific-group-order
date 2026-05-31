@@ -147,6 +147,7 @@ const emptyStock = {
   name: "",
   quantity: 0,
   reserved: 0,
+  soldQuantity: 0,
   location: "",
   sellVnd: 0,
   ownerId: "staff-vn",
@@ -251,10 +252,20 @@ function kg(value) {
   return Number(value || 0).toLocaleString("vi-VN", { maximumFractionDigits: 2 });
 }
 
+function kgActual(value) {
+  return Number(value || 0).toLocaleString("vi-VN", { maximumFractionDigits: 3 });
+}
+
 function roundWeightUpKg(value) {
   const amount = Number(value);
   if (!Number.isFinite(amount) || amount <= 0) return 0;
   return Math.ceil((amount - Number.EPSILON) * 10) / 10;
+}
+
+function normalizeActualWeightKg(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return Math.round(amount * 1000) / 1000;
 }
 
 function today() {
@@ -320,7 +331,7 @@ function normalizeOrder(order) {
     unitWeightKg,
     productWeightSource,
     weightKg: unitWeightKg * quantity,
-    vnActualWeightKg: roundWeightUpKg(order?.vnActualWeightKg || 0),
+    vnActualWeightKg: normalizeActualWeightKg(order?.vnActualWeightKg || 0),
     vnActualShippingCost: Math.max(0, money(order?.vnActualShippingCost)),
     weightCheckedBy: order?.weightCheckedBy || "",
     weightCheckedAt: order?.weightCheckedAt || "",
@@ -684,7 +695,7 @@ function orderFinance(order, billingWeightOverrideKg = null) {
   const quotedWeightKg = orderTotalWeightKg(order);
   const totalWeightKg = quotedWeightKg;
   const billingWeightKg = billingWeightOverrideKg !== null ? Math.max(0, money(billingWeightOverrideKg)) : quotedWeightKg;
-  const vnActualWeightKg = roundWeightUpKg(order.vnActualWeightKg || 0);
+  const vnActualWeightKg = normalizeActualWeightKg(order.vnActualWeightKg || 0);
   const hasVnWeight = vnActualWeightKg > 0;
   const goodsAud = unitAud * quantity;
   const goodsVnd = goodsAud * rate;
@@ -697,8 +708,8 @@ function orderFinance(order, billingWeightOverrideKg = null) {
   const actualShippingCostVnd = vnActualShippingCost > 0 ? vnActualShippingCost : estimatedActualShippingCostVnd;
   const finalWeightRateVnd = money(order.finalWeightRateVnd) || defaultFinalWeightRateVnd;
   const finalWeightChargeVnd = billingWeightKg * finalWeightRateVnd;
-  const expectedTotalCostVnd = goodsVnd + domesticShippingVnd + purchaseFeeVnd + airFreightVnd + money(order.extraFeeVnd);
-  const totalCostVnd = goodsVnd + domesticShippingVnd + purchaseFeeVnd + actualShippingCostVnd + money(order.extraFeeVnd);
+  const expectedTotalCostVnd = goodsVnd + domesticShippingVnd + airFreightVnd + money(order.extraFeeVnd);
+  const totalCostVnd = goodsVnd + domesticShippingVnd + actualShippingCostVnd + money(order.extraFeeVnd);
   const suggestedTotalThuVnd = goodsVnd + domesticShippingVnd + purchaseFeeVnd + finalWeightChargeVnd + money(order.extraFeeVnd);
   const totalThuVnd = money(order.totalThuVnd) || suggestedTotalThuVnd;
   const depositVnd = money(order.depositVnd);
@@ -783,12 +794,12 @@ function batchFinanceSummary(batch, orders) {
   const freightAudPerKg = money(batch?.freightAud);
   const rate = money(batch?.exchangeRate) || exchangeRate;
   const estimatedAirFreightVnd = billableOrders.reduce((sum, order) => sum + orderFinance(order).airFreightVnd, 0);
-  const orderActualWeightKg = billableOrders.reduce((sum, order) => sum + roundWeightUpKg(order.vnActualWeightKg || 0), 0);
+  const orderActualWeightKg = billableOrders.reduce((sum, order) => sum + normalizeActualWeightKg(order.vnActualWeightKg || 0), 0);
   const actualWeightKg = batchActualWeightKg(batch) || orderActualWeightKg;
   const chargeWeightKg = actualWeightKg > 0 ? actualWeightKg : estimatedWeightKg;
   const actualAirFreightVnd = billableOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).actualShippingCostVnd, 0);
   const actualAirFreightAud = rate > 0 ? actualAirFreightVnd / rate : 0;
-  const missingVnWeight = billableOrders.filter((order) => roundWeightUpKg(order.vnActualWeightKg || 0) <= 0).length;
+  const missingVnWeight = billableOrders.filter((order) => normalizeActualWeightKg(order.vnActualWeightKg || 0) <= 0).length;
   const shippingLossOrders = billableOrders.filter((order) => orderFinanceForBatch(order, batch, orders).hasShippingLoss).length;
   const revenue = batchOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).totalThuVnd, 0);
   const deposit = batchOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).depositVnd, 0);
@@ -1445,7 +1456,7 @@ function App() {
             setLoginError("Phiên đăng nhập đã hết hạn, đăng nhập lại để sync cloud.");
           }
         });
-    }, 1500);
+    }, 350);
 
     return () => window.clearTimeout(timeout);
   }, [sessionToken, currentAccountId, accounts, orders, customers, batches, inventory, transactions, tasks]);
@@ -1634,7 +1645,7 @@ function App() {
       unitWeightKg,
       productWeightSource: unitWeightKg > 0 ? (draft.productWeightSource || "manual") : "",
       weightKg: totalWeightKg,
-      vnActualWeightKg: roundWeightUpKg(draft.vnActualWeightKg || 0),
+      vnActualWeightKg: normalizeActualWeightKg(draft.vnActualWeightKg || 0),
       vnActualShippingCost: Math.max(0, Number(draft.vnActualShippingCost || 0)),
       weightCheckedBy: draft.weightCheckedBy || "",
       weightCheckedAt: draft.weightCheckedAt || "",
@@ -1828,7 +1839,18 @@ function App() {
 
   function saveStock(event) {
     event.preventDefault();
-    const nextItem = { ...draft, sku: draft.sku || makeId("SKU") };
+    const quantity = Math.max(0, Number(draft.quantity || 0));
+    const reserved = Math.max(0, Number(draft.reserved || 0));
+    const soldQuantity = Math.max(0, Number(draft.soldQuantity || 0));
+    const available = Math.max(quantity - reserved - soldQuantity, 0);
+    const nextItem = {
+      ...draft,
+      sku: draft.sku || makeId("SKU"),
+      quantity,
+      reserved,
+      soldQuantity,
+      status: available <= 0 ? "sold_out" : (soldQuantity > 0 ? "partly_sold" : (draft.status || "available"))
+    };
     setInventory((current) => {
       const exists = current.some((item) => item.sku === nextItem.sku);
       return exists ? current.map((item) => (item.sku === nextItem.sku ? nextItem : item)) : [nextItem, ...current];
@@ -2426,7 +2448,7 @@ function StaffWorkReportPanel({ orders, batches, accounts, openOrder, defaultAss
       sum.revenue += finance.totalThuVnd;
       sum.remaining += finance.remainingVnd;
       sum.weightKg += orderTotalWeightKg(order);
-      sum.vnWeightKg += roundWeightUpKg(order.vnActualWeightKg || 0);
+      sum.vnWeightKg += normalizeActualWeightKg(order.vnActualWeightKg || 0);
       return sum;
     },
     { orders: 0, completed: 0, revenue: 0, remaining: 0, weightKg: 0, vnWeightKg: 0 }
@@ -3195,6 +3217,7 @@ function StockView({ inventory, orders, batches, openStock, openOrder }) {
                 <th>Sản phẩm</th>
                 <th>Tồn</th>
                 <th>Đang giữ</th>
+                <th>Đã bán</th>
                 <th>Có thể bán</th>
                 <th>Giá bán</th>
                 <th>Kho/điểm giữ</th>
@@ -3208,7 +3231,8 @@ function StockView({ inventory, orders, batches, openStock, openOrder }) {
                   <td data-label="Sản phẩm">{item.name}<span>{item.note}</span></td>
                   <td data-label="Tồn">{item.quantity}</td>
                   <td data-label="Đang giữ">{item.reserved}</td>
-                  <td data-label="Có thể bán">{Math.max(money(item.quantity) - money(item.reserved), 0)}</td>
+                  <td data-label="Đã bán">{money(item.soldQuantity)}</td>
+                  <td data-label="Có thể bán">{Math.max(money(item.quantity) - money(item.reserved) - money(item.soldQuantity), 0)}</td>
                   <td data-label="Giá bán">{vnd(item.sellVnd)}</td>
                   <td data-label="Kho/điểm giữ">{item.location}</td>
                   <td data-label="Tình trạng">{item.status}</td>
@@ -4073,7 +4097,8 @@ function AfterArrivalView({ orders, batches, accounts, currentAccountId, openOrd
   const managedOrders = orders
     .filter((order) => {
       const status = normalizeOrderStatus(order.status);
-      return managedStatuses.has(status) || order.receivedVnDate || order.customerShipped || order.paidInFull;
+      if (["waiting_buy", "purchased", "out_of_stock", "cancelled"].includes(status)) return false;
+      return managedStatuses.has(status) || orderIsInVn(order, findOrderBatch(batches, order)) || order.customerShipped || order.paidInFull;
     })
     .sort((a, b) => {
       const financeA = orderFinanceForBatch(a, findOrderBatch(batches, a), orders);
@@ -4301,7 +4326,7 @@ function AfterArrivalView({ orders, batches, accounts, currentAccountId, openOrd
                             <input
                               type="number"
                               min="0"
-                              step="0.1"
+                              step="0.001"
                               inputMode="decimal"
                               disabled={!editable}
                               value={order.vnActualWeightKg || ""}
@@ -4315,7 +4340,7 @@ function AfterArrivalView({ orders, batches, accounts, currentAccountId, openOrd
                                 });
                               }}
                               onBlur={(event) => {
-                                const nextWeight = roundWeightUpKg(event.target.value);
+                                const nextWeight = normalizeActualWeightKg(event.target.value);
                                 updateOrder(order.id, {
                                   vnActualWeightKg: nextWeight,
                                   weightCheckedBy: nextWeight ? (order.weightCheckedBy || activeChecker?.displayName || activeChecker?.username || "") : order.weightCheckedBy,
@@ -4337,7 +4362,7 @@ function AfterArrivalView({ orders, batches, accounts, currentAccountId, openOrd
                           </label>
                           <div>
                             <span>Chênh kg</span>
-                            <strong className={finance.weightVarianceKg > 0 ? "warn" : ""}>{finance.hasVnWeight ? `${finance.weightVarianceKg >= 0 ? "+" : ""}${kg(finance.weightVarianceKg)}kg` : "Chưa cân"}</strong>
+                            <strong className={finance.weightVarianceKg > 0 ? "warn" : ""}>{finance.hasVnWeight ? `${finance.weightVarianceKg >= 0 ? "+" : ""}${kgActual(finance.weightVarianceKg)}kg` : "Chưa cân"}</strong>
                           </div>
                           <div>
                             <span>Lãi/lỗ ship</span>
@@ -4502,8 +4527,8 @@ function CashflowView({ orders, filteredOrders, batches, accounts, query, setQue
                   <td data-label="Order"><strong>{order.id}</strong><span>{order.product}</span></td>
                   <td data-label="Chuyến">{batch?.code || "Chưa xếp"}</td>
                   <td data-label="Cân báo khách">{kg(finance.quotedWeightKg)}kg</td>
-                  <td data-label="Cân VN">{finance.hasVnWeight ? `${kg(finance.vnActualWeightKg)}kg` : "Chưa có cân VN"}</td>
-                  <td data-label="Chênh lệch"><strong className={finance.weightVarianceKg > 0 ? "money-due" : ""}>{finance.hasVnWeight ? `${finance.weightVarianceKg >= 0 ? "+" : ""}${kg(finance.weightVarianceKg)}kg` : "-"}</strong><span>{finance.hasVnWeight && finance.quotedWeightKg > 0 ? `${Math.round(finance.weightVarianceRate * 100)}%` : ""}</span></td>
+                  <td data-label="Cân VN">{finance.hasVnWeight ? `${kgActual(finance.vnActualWeightKg)}kg` : "Chưa có cân VN"}</td>
+                  <td data-label="Chênh lệch"><strong className={finance.weightVarianceKg > 0 ? "money-due" : ""}>{finance.hasVnWeight ? `${finance.weightVarianceKg >= 0 ? "+" : ""}${kgActual(finance.weightVarianceKg)}kg` : "-"}</strong><span>{finance.hasVnWeight && finance.quotedWeightKg > 0 ? `${Math.round(finance.weightVarianceRate * 100)}%` : ""}</span></td>
                   <td data-label="Ship thực tế"><strong>{vnd(finance.actualShippingCostVnd)}</strong><span>Tạm tính {vnd(finance.airFreightVnd)}</span></td>
                   <td data-label="Cảnh báo">{finance.hasShippingLoss ? <span className="status-chip out_of_stock">Lỗ phí ship</span> : finance.hasVnWeight ? <span className="status-chip reconciled">Đã cân</span> : <span className="status-chip waiting_vn_weight">Chưa cân VN</span>}</td>
                 </tr>
@@ -5045,7 +5070,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
             </Field>
             <Field label="Tiền hàng AUD / sản phẩm">
               <input className="price-input" type="number" min="0" step="0.01" value={draft.aud} onChange={(event) => setDraft({ ...draft, aud: event.target.value })} />
-              <span className="field-hint">Dán link là app tự lấy giá và làm tròn lên nấc 0.1 AUD; từ .90 lên số nguyên, ví dụ 14.25 -&gt; 14.3, 14.90 -&gt; 15.</span>
+              <span className="field-hint">Nhập/sửa theo bill tại thời điểm mua. Giá lấy từ link chỉ là gợi ý và app vẫn cho sửa tay.</span>
             </Field>
             <Field label="Ship Úc AUD"><input type="number" value={draft.shippingAud} onChange={(event) => setDraft({ ...draft, shippingAud: event.target.value })} /></Field>
             <Field label="Cước bay AUD/kg">
@@ -5053,7 +5078,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
               <span className="field-hint">{selectedBatch ? `Khóa theo chuyến ${selectedBatch.code || selectedBatch.id}: ${aud(selectedBatch.freightAud)} / kg` : "Chọn chuyến bay để tự áp cước AUD/kg."}</span>
             </Field>
             <Field label="Giá cân cuối VND/kg"><input type="number" min="0" value={draft.finalWeightRateVnd ?? defaultFinalWeightRateVnd} onChange={(event) => setDraft({ ...draft, finalWeightRateVnd: event.target.value })} /></Field>
-            <Field label="Kg VN thực tế"><input type="number" min="0" step="0.1" inputMode="decimal" value={draft.vnActualWeightKg ?? 0} onChange={(event) => setDraft({ ...draft, vnActualWeightKg: event.target.value })} onBlur={() => setDraft({ ...draft, vnActualWeightKg: roundWeightUpKg(draft.vnActualWeightKg) })} /></Field>
+            <Field label="Kg VN thực tế"><input type="number" min="0" step="0.001" inputMode="decimal" value={draft.vnActualWeightKg ?? 0} onChange={(event) => setDraft({ ...draft, vnActualWeightKg: event.target.value })} onBlur={() => setDraft({ ...draft, vnActualWeightKg: normalizeActualWeightKg(draft.vnActualWeightKg) })} /></Field>
             <Field label="Ship thực tế VN"><input type="number" min="0" value={draft.vnActualShippingCost ?? 0} onChange={(event) => setDraft({ ...draft, vnActualShippingCost: event.target.value })} /></Field>
             <Field label="Người cân"><input value={draft.weightCheckedBy || ""} onChange={(event) => setDraft({ ...draft, weightCheckedBy: event.target.value })} /></Field>
             <Field label="Ngày cân VN"><input type="date" value={draft.weightCheckedAt || ""} onChange={(event) => setDraft({ ...draft, weightCheckedAt: event.target.value })} /></Field>
@@ -5090,19 +5115,19 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
               </div>
               <div className="formula-line">
                 <span>Đối soát VN</span>
-                <strong>{finance.hasVnWeight ? `${kg(finance.vnActualWeightKg)}kg thực tế · chênh ${finance.weightVarianceKg >= 0 ? "+" : ""}${kg(finance.weightVarianceKg)}kg · ship thật ${vnd(finance.actualShippingCostVnd)}` : "Chưa có cân VN thực tế"}</strong>
+                <strong>{finance.hasVnWeight ? `${kgActual(finance.vnActualWeightKg)}kg thực tế · chênh ${finance.weightVarianceKg >= 0 ? "+" : ""}${kgActual(finance.weightVarianceKg)}kg · ship thật ${vnd(finance.actualShippingCostVnd)}` : "Chưa có cân VN thực tế"}</strong>
               </div>
               <div className="formula-line">
                 <span>Thu cân cuối</span>
                 <strong>{kg(finance.billingWeightKg)}kg × {vnd(finance.finalWeightRateVnd)}/kg = {vnd(finance.finalWeightChargeVnd)}</strong>
               </div>
             </section>
-            <div><span>Tổng chi phí gốc</span><strong>{vnd(finance.totalCostVnd)}</strong><small>Tiền hàng + ship Úc + phí mua + cước bay gốc + phụ phí</small></div>
+            <div><span>Tổng chi phí gốc</span><strong>{vnd(finance.totalCostVnd)}</strong><small>Tiền hàng + ship Úc + cước bay gốc/thực tế + phụ phí. Phí mua hàng chuyển sang lãi.</small></div>
             <div><span>Cọc đã thu</span><strong>{vnd(finance.depositVnd)}</strong></div>
             <div><span>Tiền hàng</span><strong>{vnd(finance.goodsVnd)}</strong></div>
             <div><span>Phí mua hàng</span><strong>{vnd(finance.purchaseFeeVnd)}</strong></div>
             <div><span>Cước cân tạm tính</span><strong>{vnd(finance.airFreightVnd)}</strong><small>{kg(finance.billingWeightKg)}kg × {aud(draft.intlShippingAud)} × {vnd(finance.rate)}</small></div>
-            <div className={finance.hasShippingLoss ? "warning" : ""}><span>Ship thực tế VN</span><strong>{vnd(finance.actualShippingCostVnd)}</strong><small>{finance.hasVnWeight ? `Cân VN ${kg(finance.vnActualWeightKg)}kg · lệch ${finance.weightVarianceKg >= 0 ? "+" : ""}${kg(finance.weightVarianceKg)}kg` : "Chưa có cân VN, đang dùng tạm tính"}</small></div>
+            <div className={finance.hasShippingLoss ? "warning" : ""}><span>Ship thực tế VN</span><strong>{vnd(finance.actualShippingCostVnd)}</strong><small>{finance.hasVnWeight ? `Cân VN ${kgActual(finance.vnActualWeightKg)}kg · lệch ${finance.weightVarianceKg >= 0 ? "+" : ""}${kgActual(finance.weightVarianceKg)}kg` : "Chưa có cân VN, đang dùng tạm tính"}</small></div>
             <div><span>Số tiền cân cuối</span><strong>{vnd(finance.finalWeightChargeVnd)}</strong><small>{kg(finance.billingWeightKg)}kg × {vnd(finance.finalWeightRateVnd)}</small></div>
             <div className={finance.hasShippingLoss ? "warning" : ""}><span>Lãi/lỗ ship thật</span><strong>{vnd(finance.weightProfitVnd)}</strong><small>Cân cuối thu khách - ship thực tế VN</small></div>
             <div><span>Ship Úc</span><strong>{vnd(finance.domesticShippingVnd)}</strong></div>
@@ -5271,6 +5296,12 @@ function StockModal({ draft, setDraft, accounts, save, remove, close }) {
           <Field label="Tên sản phẩm"><input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></Field>
           <Field label="Tồn"><input type="number" value={draft.quantity} onChange={(event) => setDraft({ ...draft, quantity: event.target.value })} /></Field>
           <Field label="Đang giữ"><input type="number" value={draft.reserved} onChange={(event) => setDraft({ ...draft, reserved: event.target.value })} /></Field>
+          <Field label="Đã bán"><input type="number" min="0" value={draft.soldQuantity || 0} onChange={(event) => setDraft({ ...draft, soldQuantity: event.target.value })} /></Field>
+          <div className="flight-link-hint">
+            <span>Có thể bán</span>
+            <strong>{Math.max(money(draft.quantity) - money(draft.reserved) - money(draft.soldQuantity), 0)}</strong>
+            <em>Tồn - đang giữ - đã bán</em>
+          </div>
           <Field label="Giá bán VND"><input type="number" value={draft.sellVnd} onChange={(event) => setDraft({ ...draft, sellVnd: event.target.value })} /></Field>
           <Field label="Kho/điểm giữ"><input value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} /></Field>
           <Field label="Phụ trách">
@@ -5278,7 +5309,14 @@ function StockModal({ draft, setDraft, accounts, save, remove, close }) {
               {accounts.filter((account) => account.active).map((account) => <option value={account.id} key={account.id}>{account.displayName}</option>)}
             </select>
           </Field>
-          <Field label="Tình trạng"><input value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })} /></Field>
+          <Field label="Tình trạng">
+            <select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })}>
+              <option value="available">Còn hàng</option>
+              <option value="partly_sold">Đã bán một phần</option>
+              <option value="sold_out">Hết hàng</option>
+              <option value="hold">Đang giữ</option>
+            </select>
+          </Field>
           <Field label="Note" wide><textarea value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} /></Field>
         </div>
         <div className="modal-actions">
