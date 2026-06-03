@@ -717,6 +717,9 @@ function orderFinance(order, billingWeightOverrideKg = null) {
   const weightVarianceRate = hasVnWeight && quotedWeightKg > 0 ? weightVarianceKg / quotedWeightKg : 0;
   const shippingCostVarianceVnd = actualShippingCostVnd - airFreightVnd;
   const actualWeightChargeProfitVnd = finalWeightChargeVnd - actualShippingCostVnd;
+  const buyingProfitVnd = purchaseFeeVnd;
+  const operatingProfitVnd = buyingProfitVnd + actualWeightChargeProfitVnd;
+  const estimatedOperatingProfitVnd = buyingProfitVnd + (finalWeightChargeVnd - airFreightVnd);
   const hasShippingLoss = hasVnWeight && actualWeightChargeProfitVnd < 0;
 
   return {
@@ -743,15 +746,18 @@ function orderFinance(order, billingWeightOverrideKg = null) {
     finalWeightRateVnd,
     finalWeightChargeVnd,
     suggestedTotalThuVnd,
+    buyingProfitVnd,
     weightProfitVnd: actualWeightChargeProfitVnd,
+    operatingProfitVnd,
+    cashProfitVnd: totalThuVnd - totalCostVnd,
     hasShippingLoss,
     expectedTotalCostVnd,
     totalCostVnd,
     totalThuVnd,
     depositVnd,
     remainingVnd: Math.max(totalThuVnd - depositVnd, 0),
-    estimatedProfitVnd: totalThuVnd - expectedTotalCostVnd,
-    profitVnd: totalThuVnd - totalCostVnd
+    estimatedProfitVnd: estimatedOperatingProfitVnd,
+    profitVnd: operatingProfitVnd
   };
 }
 
@@ -805,6 +811,7 @@ function batchFinanceSummary(batch, orders) {
   const deposit = batchOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).depositVnd, 0);
   const remaining = batchOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).remainingVnd, 0);
   const orderCost = batchOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).totalCostVnd, 0);
+  const profit = batchOrders.reduce((sum, order) => sum + orderFinanceForBatch(order, batch, orders).profitVnd, 0);
   return {
     batchOrders,
     billableOrders,
@@ -823,6 +830,7 @@ function batchFinanceSummary(batch, orders) {
     deposit,
     remaining,
     orderCost,
+    profit,
     adjustedCost: orderCost
   };
 }
@@ -2597,7 +2605,7 @@ function OverviewView(props) {
           <Kpi label="Đã cọc / đã thu" value={vnd(totals.deposit)} icon={ShieldCheck} />
           <Kpi label="Còn phải thu" value={vnd(totals.remaining)} icon={CreditCard} tone="warning" />
           <Kpi label="Tổng chi phí" value={vnd(totals.cost)} icon={Boxes} />
-          {canSeeProfit && <Kpi label="Lãi dự kiến" value={vnd(totals.profit)} icon={Gem} tone="success" />}
+          {canSeeProfit && <Kpi label="Lãi công + cân" value={vnd(totals.profit)} icon={Gem} tone="success" />}
         </section>
         <OverviewBuyingBoard
           batches={batches}
@@ -4479,11 +4487,11 @@ function CashflowView({ orders, filteredOrders, batches, accounts, query, setQue
                 <th>Đối soát VN</th>
                 <th>Chi cước bay</th>
                 <th>Tổng chi phí</th>
-                {canSeeProfit && <th>Lãi dự kiến</th>}
+                {canSeeProfit && <th>Lãi công + cân</th>}
               </tr>
             </thead>
             <tbody>
-              {totalsByBatch.map(({ batch, revenue, deposit, remaining, chargeWeightKg, avgActualWeightKg, actualAirFreightVnd, cost, missingVnWeight, shippingLossOrders }) => (
+              {totalsByBatch.map(({ batch, revenue, deposit, remaining, chargeWeightKg, avgActualWeightKg, actualAirFreightVnd, cost, profit, missingVnWeight, shippingLossOrders }) => (
                 <tr key={batch.id}>
                   <td data-label="Đợt"><strong>{batch.code || batch.id}</strong></td>
                   <td data-label="Tổng thu / Doanh số">{vnd(revenue)}</td>
@@ -4493,7 +4501,7 @@ function CashflowView({ orders, filteredOrders, batches, accounts, query, setQue
                   <td data-label="Đối soát VN"><strong>{missingVnWeight ? `Chưa cân ${missingVnWeight}` : "Đã cân VN"}</strong><span className={shippingLossOrders ? "money-due" : ""}>{shippingLossOrders ? `${shippingLossOrders} đơn lỗ phí ship` : "Không có cảnh báo lỗ ship"}</span></td>
                   <td data-label="Chi cước bay"><strong>{vnd(actualAirFreightVnd)}</strong><span>{kg(chargeWeightKg)}kg x {aud(batch.freightAud)}</span></td>
                   <td data-label="Tổng chi phí">{vnd(cost)}</td>
-                  {canSeeProfit && <td data-label="Lãi dự kiến">{vnd(revenue - cost)}</td>}
+                  {canSeeProfit && <td data-label="Lãi công + cân">{vnd(profit)}</td>}
                 </tr>
               ))}
             </tbody>
@@ -5130,6 +5138,7 @@ function OrderModal({ draft, setDraft, batches, accounts, customers, orders, pro
             <div className={finance.hasShippingLoss ? "warning" : ""}><span>Ship thực tế VN</span><strong>{vnd(finance.actualShippingCostVnd)}</strong><small>{finance.hasVnWeight ? `Cân VN ${kgActual(finance.vnActualWeightKg)}kg · lệch ${finance.weightVarianceKg >= 0 ? "+" : ""}${kgActual(finance.weightVarianceKg)}kg` : "Chưa có cân VN, đang dùng tạm tính"}</small></div>
             <div><span>Số tiền cân cuối</span><strong>{vnd(finance.finalWeightChargeVnd)}</strong><small>{kg(finance.billingWeightKg)}kg × {vnd(finance.finalWeightRateVnd)}</small></div>
             <div className={finance.hasShippingLoss ? "warning" : ""}><span>Lãi/lỗ ship thật</span><strong>{vnd(finance.weightProfitVnd)}</strong><small>Cân cuối thu khách - ship thực tế VN</small></div>
+            <div><span>Lãi công + lãi cân</span><strong>{vnd(finance.profitVnd)}</strong><small>Phí mua hàng {vnd(finance.buyingProfitVnd)} + lãi/lỗ ship {vnd(finance.weightProfitVnd)}</small></div>
             <div><span>Ship Úc</span><strong>{vnd(finance.domesticShippingVnd)}</strong></div>
             <div><span>{hasManualTotalThu ? "Tổng thu nhập tay" : "Tổng thu tự động"}</span><strong>{vnd(finance.totalThuVnd)}</strong><small>{hasManualTotalThu ? `Gợi ý tự động: ${vnd(finance.suggestedTotalThuVnd)}` : "Tiền hàng + ship Úc + phí mua + cân cuối + phụ phí"}</small></div>
           </div>
